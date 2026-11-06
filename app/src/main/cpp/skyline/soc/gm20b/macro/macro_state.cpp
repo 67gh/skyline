@@ -25,6 +25,9 @@ namespace skyline::soc::gm20b {
 
     namespace macro_hle {
         bool DrawInstanced(size_t offset, span<GpfifoArgument> args, engine::MacroEngineBase *targetEngine, const std::function<void(void)> &flushCallback) {
+            if (args.size() != 5)
+                return false;
+
             if (AnyArgsDirty(args))
                 flushCallback();
 
@@ -35,18 +38,36 @@ namespace skyline::soc::gm20b {
         }
 
         bool DrawInstancedIndexedIndirect(size_t offset, span<GpfifoArgument> args, engine::MacroEngineBase *targetEngine, const std::function<void(void)> &flushCallback) {
-            u32 topology{*args[0]};
-            bool topologyConversion{TopologyRequiresConversion(static_cast<engine::maxwell3d::type::DrawTopology>(topology))};
+            if (args.size() != 6)
+                return false;
 
-            // If the indirect topology isn't supported flush and fallback to a non indirect draw
-            if (topologyConversion && args[1].dirty)
+            // Topology is consumed by the CPU even on the indirect path.
+            bool flushed{args[0].dirty};
+            if (flushed)
                 flushCallback();
 
-            if (topologyConversion || !args[1].dirty) {
-                u32 instanceCount{targetEngine->ReadMethodFromMacro(0xD1B) & *args[2]};
-                targetEngine->DrawIndexedInstanced(topology, *args[1], instanceCount, *args[4], *args[3], *args[5]);
-            } else {
+            u32 topology{*args[0]};
+            bool topologyConversion{TopologyRequiresConversion(static_cast<engine::maxwell3d::type::DrawTopology>(topology))};
+            u32 instanceMask{targetEngine->ReadMethodFromMacro(0xD1B)};
+
+            // A macro invocation can span pushbuffers. Vulkan must only see a
+            // single contiguous five-word draw command, never unrelated args.
+            bool contiguous{args[1].argumentPtr != nullptr};
+            for (size_t i{2}; contiguous && i < 6; ++i)
+                contiguous = args[i].argumentPtr &&
+                    reinterpret_cast<uintptr_t>(args[i].argumentPtr) ==
+                    reinterpret_cast<uintptr_t>(args[1].argumentPtr) + (i - 1) * sizeof(u32);
+
+            // Vulkan cannot apply the macro's instance-count mask. Preserve it
+            // with a synchronized direct draw when the mask is non-identity.
+            if (!flushed && !topologyConversion && instanceMask == ~u32{} &&
+                contiguous && AnyArgsDirty(args.subspan(1))) {
                 targetEngine->DrawIndexedIndirect(topology, span(args[1].argumentPtr, 5).cast<u8>(), 1, 0);
+            } else {
+                if (!flushed && AnyArgsDirty(args))
+                    flushCallback();
+                u32 instanceCount{instanceMask & *args[2]};
+                targetEngine->DrawIndexedInstanced(topology, *args[1], instanceCount, *args[4], *args[3], *args[5]);
             }
 
             return true;
@@ -58,7 +79,7 @@ namespace skyline::soc::gm20b {
             u32 hash;
         };
 
-        constexpr std::array<HleFunctionInfo, 0x4> functions{{
+        constexpr std::array<HleFunctionInfo, 0x3> functions{{
             {DrawInstanced, 0x12, 0x2FDD711},
             {DrawInstancedIndexedIndirect, 0x17, 0xDBC3B762},
             {DrawInstancedIndexedIndirect, 0x1F, 0xDA07F4E5} // This macro is the same as above but it writes draw params to a cbuf, which are unnecessary due to hades HLE

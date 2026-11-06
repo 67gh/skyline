@@ -176,6 +176,19 @@ namespace skyline::soc::gm20b {
 
         auto pushBufferMappedRanges{channelCtx.asCtx->gmmu.TranslateRange(gpEntry.Address(), gpEntry.size * sizeof(u32))};
 
+        // Synchronize fragmented pushbuffers before copying their contents.
+        // Once copied, a later macro flush cannot refresh value-only arguments.
+        bool pushbufferDirty{false};
+
+        for (auto range : pushBufferMappedRanges) {
+            if (channelCtx.executor.usageTracker.dirtyIntervals.Intersect(range)) {
+                if (skipDirtyFlushes && pushBufferMappedRanges.size() == 1)
+                    pushbufferDirty = true;
+                else
+                    channelCtx.executor.Submit({}, true);
+            }
+        }
+
         bool pushBufferCopied{}; //!< Set by the below lambda in order to track if the pushbuffer is a copy of guest memory or not
         auto pushBuffer{[&]() -> span<u32> {
             if (pushBufferMappedRanges.size() == 1) {
@@ -188,17 +201,6 @@ namespace skyline::soc::gm20b {
                 return span(pushBufferData);
             }
         }()};
-
-        bool pushbufferDirty{false};
-
-        for (auto range : pushBufferMappedRanges) {
-            if (channelCtx.executor.usageTracker.dirtyIntervals.Intersect(range)) {
-                if (skipDirtyFlushes)
-                    pushbufferDirty = true;
-                else
-                    channelCtx.executor.Submit({}, true);
-            }
-        }
 
         // There will be at least one entry here
         auto entry{pushBuffer.begin()};

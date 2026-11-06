@@ -1,0 +1,19 @@
+{
+  "base_archive_sha256": "cf66c168c9cf05a2e547fcf166dcaeed325839ae6811ed9a4fd93b8e6def1cec",
+  "files": {
+    "app/src/main/cpp/skyline/soc/gm20b/macro/macro_state.cpp": {
+      "patched_sha256": "459b0b97f86827b79b18cfb47a9455c925ac66e1afc7d23dfb2355abd009741e",
+      "original_sha256": "03052e6a78da3e86cee75158ca89ee5aa2e577afbb7113032cf283c3b935d56c"
+    },
+    "app/src/main/cpp/skyline/soc/gm20b/gpfifo.cpp": {
+      "patched_sha256": "326e4ba18508aa43a8110ac6b352a2037a0ed3c7cd4a94f4cae669d49684263e",
+      "original_sha256": "9ef4000b77b48dbc6afb52d45163def1c29ca64d78f19738e50e4b519930b706"
+    },
+    "tests/test_macro_hle.py": {
+      "patched_sha256": "b9f9e6a94dc3d80520758362ed41be18ea9ee1bfe32eaefacd06141dcea2947e"
+    },
+    "AUDIT_HLE_MAXWELL_01.txt": {
+      "patched_sha256": "20010f61fc4d9939cb25953fd546a88a7a98b6f67c58b0630b9c17b19c8e88fb"
+    }
+  }
+}
