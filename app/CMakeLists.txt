@@ -12,43 +12,11 @@ set(source_DIR ${CMAKE_SOURCE_DIR}/src/main/cpp)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-strict-aliasing -Wno-unused-command-line-argument -fwrapv")
 set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -flto=full -fno-stack-protector -DNDEBUG")
 
-# Compile frame generation compute shaders to SPIR-V
-# NOTE: if the existing blit/clear .vert/.frag shaders are compiled to .spv via some external/manual
-# step rather than a CMake rule, the fg_*.comp shaders below should be moved to follow the same
-# process instead so all shaders stay consistent - this rule is a self-contained fallback.
-find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/bin" "${ANDROID_NDK}/shader-tools/${ANDROID_NDK_HOST_SYSTEM_NAME}")
-if(GLSLC_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/src/main/shaders/fg_motion_estimate.comp" AND EXISTS "${CMAKE_SOURCE_DIR}/src/main/shaders/fg_frame_interpolate.comp")
-    set(FRAME_GEN_SHADER_SRC_DIR ${CMAKE_SOURCE_DIR}/src/main/shaders)
-    set(FRAME_GEN_SHADER_OUT_DIR ${CMAKE_SOURCE_DIR}/src/main/assets/shaders)
-    file(MAKE_DIRECTORY ${FRAME_GEN_SHADER_OUT_DIR})
-
-    set(FRAME_GEN_SHADER_SOURCES
-        fg_motion_estimate.comp
-        fg_frame_interpolate.comp
-    )
-
-    set(FRAME_GEN_SHADER_OUTPUTS "")
-    foreach(shaderSrc ${FRAME_GEN_SHADER_SOURCES})
-        set(shaderIn "${FRAME_GEN_SHADER_SRC_DIR}/${shaderSrc}")
-        set(shaderOut "${FRAME_GEN_SHADER_OUT_DIR}/${shaderSrc}.spv")
-        add_custom_command(
-            OUTPUT ${shaderOut}
-            COMMAND ${GLSLC_EXECUTABLE} -O --target-env=vulkan1.1 -o ${shaderOut} ${shaderIn}
-            DEPENDS ${shaderIn}
-            COMMENT "Compiling ${shaderSrc} to SPIR-V"
-        )
-        list(APPEND FRAME_GEN_SHADER_OUTPUTS ${shaderOut})
-    endforeach()
-
-    add_custom_target(frame_gen_shaders DEPENDS ${FRAME_GEN_SHADER_OUTPUTS})
-else()
-    message(STATUS "Optional frame generation shaders unavailable; skipping their compilation")
-    add_custom_target(frame_gen_shaders)
-endif()
-
 # Build all libraries with -Ofast but with default debug data (-g) for debug and reldebug builds
 set(CMAKE_CXX_FLAGS_DEBUG "-Ofast")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-Ofast")
+
+# Use the libc++ supplied by the Android NDK (configured by Gradle).
 
 # Skyline's Boost fork
 set(Boost_USE_STATIC_LIBS ON)
@@ -124,96 +92,10 @@ add_subdirectory("libraries/range")
 add_subdirectory("libraries/sirit")
 
 # libadrenotools
-include(cmake/ApplyCustomDriverPatch.cmake)
 add_subdirectory("libraries/adrenotools")
 
 # Tessil Robin Map
 add_subdirectory("libraries/robin-map")
-
-# Dynarmic JIT used to execute guest instructions that NCE can't run natively (see skyline/nce/jit_fallback.h)
-# It is enabled by default but only built if the submodule was fetched.
-option(STRATO_JIT_FALLBACK "Enable the Dynarmic JIT fallback for instructions NCE fails on" OFF)
-set(STRATO_JIT_ENABLED OFF)
-
-if (STRATO_JIT_FALLBACK)
-    if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libraries/dynarmic/CMakeLists.txt")
-        # Strato uses a modular Boost checkout. Dynarmic calls:
-        #     find_package(Boost 1.57 REQUIRED)
-        # FindBoost needs an include directory containing boost/version.hpp.
-        set(STRATO_BOOST_ROOT
-            "${CMAKE_CURRENT_SOURCE_DIR}/libraries/boost"
-        )
-        set(STRATO_BOOST_CONFIG_INCLUDE
-            "${STRATO_BOOST_ROOT}/libs/config/include"
-        )
-
-        if (EXISTS "${STRATO_BOOST_CONFIG_INCLUDE}/boost/version.hpp")
-            set(STRATO_JIT_ENABLED ON)
-
-            # Force CMake's FindBoost module to use the bundled Boost sources.
-            set(BOOST_ROOT "${STRATO_BOOST_ROOT}" CACHE PATH "Strato bundled Boost root" FORCE)
-            set(Boost_ROOT "${STRATO_BOOST_ROOT}" CACHE PATH "Strato bundled Boost root" FORCE)
-            set(Boost_NO_BOOST_CMAKE ON CACHE BOOL "" FORCE)
-            set(Boost_INCLUDE_DIR
-                "${STRATO_BOOST_CONFIG_INCLUDE}"
-                CACHE PATH "Boost headers for Dynarmic"
-                FORCE
-            )
-            set(Boost_INCLUDE_DIRS
-                "${STRATO_BOOST_CONFIG_INCLUDE}"
-                CACHE PATH "Boost include directories"
-                FORCE
-            )
-
-            # The modular Boost libraries keep their public headers in their
-            # individual libs/*/include directories.
-            file(GLOB STRATO_BOOST_HEADER_DIRS
-                "${STRATO_BOOST_ROOT}/libs/*/include"
-            )
-            include_directories(
-                SYSTEM
-                "${STRATO_BOOST_CONFIG_INCLUDE}"
-                ${STRATO_BOOST_HEADER_DIRS}
-            )
-
-            # Dynarmic configuration for Android/AArch64.
-            set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
-            set(DYNARMIC_FRONTENDS "A64" CACHE STRING "" FORCE)
-            set(DYNARMIC_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-            # Dynarmic's PCH can be fragile when cross-compiling with the Android NDK.
-            set(DYNARMIC_USE_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
-
-            # Dynarmic is embedded into Strato and is not installed as a standalone package.
-            # Its install(EXPORT ...) rules would otherwise fail because the bundled Boost/fmt
-            # targets are not part of Dynarmic's export set.
-            set(CMAKE_SKIP_INSTALL_RULES ON)
-            add_subdirectory("libraries/dynarmic")
-            set(CMAKE_SKIP_INSTALL_RULES OFF)
-
-            if (NOT TARGET dynarmic)
-                set(STRATO_JIT_ENABLED OFF)
-                message(WARNING
-                    "Dynarmic was found but its CMake target was not created; "
-                    "building WITHOUT the JIT fallback"
-                )
-            endif ()
-        else ()
-            message(WARNING
-                "STRATO_JIT_FALLBACK is ON but "
-                "${STRATO_BOOST_CONFIG_INCLUDE}/boost/version.hpp was not found; "
-                "building WITHOUT the JIT fallback"
-            )
-        endif ()
-    else ()
-        message(WARNING
-            "STRATO_JIT_FALLBACK is ON but libraries/dynarmic is empty; "
-            "building WITHOUT the JIT fallback. "
-            "GitHub Actions should checkout submodules recursively."
-        )
-    endif ()
-endif ()
-
-message(STATUS "Dynarmic JIT fallback: ${STRATO_JIT_ENABLED}")
 
 # Renderdoc in-app API
 include_directories("libraries/renderdoc")
@@ -223,7 +105,7 @@ include_directories("libraries/thread-pool")
 
 # Build Skyline with full debugging data and -Og for debug builds
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3 -glldb -gdwarf-5 -fno-omit-frame-pointer")
-# Build Skyline with full debugging data and some optimizations for reldebug builds, build speed is prioritised
+# Build Skyline with full debugging data and some optimizations for reldebug builds, build speed is pioritised
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O1 -g3 -glldb -gdwarf-5 -fno-omit-frame-pointer -fno-stack-protector")
 
 # Include headers from libraries as system headers to silence warnings from them
@@ -241,7 +123,6 @@ function(target_link_libraries_system target)
 endfunction(target_link_libraries_system)
 
 # yuzu Shader Compiler
-include("cmake/ApplyShaderCompilerPatches.cmake")
 add_subdirectory("libraries/shader-compiler")
 target_include_directories(shader_recompiler PUBLIC "libraries/shader-compiler/include")
 target_link_libraries_system(shader_recompiler Boost::intrusive Boost::container range-v3)
@@ -251,8 +132,6 @@ add_subdirectory("libraries/audio-core")
 include_directories(SYSTEM "libraries/audio-core/include")
 target_link_libraries_system(audio_core Boost::intrusive Boost::container range-v3)
 
-include("cmake/VideoDecoder.cmake")
-
 # Skyline
 add_library(skyline SHARED
         ${source_DIR}/driver_jni.cpp
@@ -260,17 +139,13 @@ add_library(skyline SHARED
         ${source_DIR}/loader_jni.cpp
         ${source_DIR}/skyline/common.cpp
         ${source_DIR}/skyline/common/exception.cpp
-        ${source_DIR}/skyline/common/diagnostic_recorder.cpp
-        ${source_DIR}/skyline/common/diagnostic_crash.cpp
+        ${source_DIR}/skyline/common/logger.cpp
         ${source_DIR}/skyline/common/signal.cpp
         ${source_DIR}/skyline/common/spin_lock.cpp
         ${source_DIR}/skyline/common/uuid.cpp
         ${source_DIR}/skyline/common/trace.cpp
-        ${source_DIR}/skyline/common/trap_manager.cpp
-        ${source_DIR}/skyline/logger/logger.cpp
         ${source_DIR}/skyline/nce/guest.S
         ${source_DIR}/skyline/nce.cpp
-        ${source_DIR}/skyline/nce/jit_fallback.cpp
         ${source_DIR}/skyline/jvm.cpp
         ${source_DIR}/skyline/os.cpp
         ${source_DIR}/skyline/kernel/memory.cpp
@@ -279,9 +154,8 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/kernel/svc.cpp
         ${source_DIR}/skyline/kernel/types/KProcess.cpp
         ${source_DIR}/skyline/kernel/types/KThread.cpp
-        ${source_DIR}/skyline/kernel/types/KTransferMemory.cpp
         ${source_DIR}/skyline/kernel/types/KSharedMemory.cpp
-        ${source_DIR}/skyline/kernel/types/KMemory.cpp
+        ${source_DIR}/skyline/kernel/types/KPrivateMemory.cpp
         ${source_DIR}/skyline/kernel/types/KSyncObject.cpp
         ${source_DIR}/skyline/audio.cpp
         ${source_DIR}/skyline/gpu.cpp
@@ -290,7 +164,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/gpu/texture_manager.cpp
         ${source_DIR}/skyline/gpu/buffer_manager.cpp
         ${source_DIR}/skyline/gpu/command_scheduler.cpp
-        ${source_DIR}/skyline/gpu/diagnostics.cpp
         ${source_DIR}/skyline/gpu/descriptor_allocator.cpp
         ${source_DIR}/skyline/gpu/texture/bc_decoder.cpp
         ${source_DIR}/skyline/gpu/texture/texture.cpp
@@ -298,7 +171,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/gpu/buffer.cpp
         ${source_DIR}/skyline/gpu/megabuffer.cpp
         ${source_DIR}/skyline/gpu/presentation_engine.cpp
-        ${source_DIR}/skyline/gpu/frame_generation/frame_generator.cpp
         ${source_DIR}/skyline/gpu/shader_manager.cpp
         ${source_DIR}/skyline/gpu/pipeline_cache_manager.cpp
         ${source_DIR}/skyline/gpu/graphics_pipeline_assembler.cpp
@@ -335,8 +207,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/soc/host1x/classes/host1x.cpp
         ${source_DIR}/skyline/soc/host1x/classes/vic.cpp
         ${source_DIR}/skyline/soc/host1x/classes/nvdec.cpp
-        ${source_DIR}/skyline/soc/host1x/video/decoder.cpp
-        ${source_DIR}/skyline/soc/host1x/video/compositor.cpp
         ${source_DIR}/skyline/soc/gm20b/channel.cpp
         ${source_DIR}/skyline/soc/gm20b/gpfifo.cpp
         ${source_DIR}/skyline/soc/gm20b/gmmu.cpp
@@ -376,7 +246,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/vfs/ticket.cpp
         ${source_DIR}/skyline/services/serviceman.cpp
         ${source_DIR}/skyline/services/base_service.cpp
-        ${source_DIR}/skyline/services/stub_service.cpp
         ${source_DIR}/skyline/services/sm/IUserInterface.cpp
         ${source_DIR}/skyline/services/fatalsrv/IService.cpp
         ${source_DIR}/skyline/services/audio/IAudioInManager.cpp
@@ -416,7 +285,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/bcat/IDeliveryCacheFileService.cpp
         ${source_DIR}/skyline/services/bcat/IDeliveryCacheDirectoryService.cpp
         ${source_DIR}/skyline/services/bcat/IServiceCreator.cpp
-        ${source_DIR}/skyline/services/bcat/IDeliveryCacheProgressService.cpp
         ${source_DIR}/skyline/services/bt/IBluetoothUser.cpp
         ${source_DIR}/skyline/services/btm/IBtmUser.cpp
         ${source_DIR}/skyline/services/btm/IBtmUserCore.cpp
@@ -457,7 +325,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/fssrv/IStorage.cpp
         ${source_DIR}/skyline/services/fssrv/IDirectory.cpp
         ${source_DIR}/skyline/services/fssrv/IMultiCommitManager.cpp
-        ${source_DIR}/skyline/services/fssrv/ISaveDataInfoReader.cpp
         ${source_DIR}/skyline/services/nvdrv/INvDrvServices.cpp
         ${source_DIR}/skyline/services/nvdrv/driver.cpp
         ${source_DIR}/skyline/services/nvdrv/core/nvmap.cpp
@@ -482,7 +349,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/aocsrv/IPurchaseEventManager.cpp
         ${source_DIR}/skyline/services/pctl/IParentalControlServiceFactory.cpp
         ${source_DIR}/skyline/services/pctl/IParentalControlService.cpp
-        ${source_DIR}/skyline/services/lbl/ILblController.cpp
         ${source_DIR}/skyline/services/lm/ILogService.cpp
         ${source_DIR}/skyline/services/lm/ILogger.cpp
         ${source_DIR}/skyline/services/ldn/IUserServiceCreator.cpp
@@ -490,8 +356,6 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/account/IAccountServiceForApplication.cpp
         ${source_DIR}/skyline/services/account/IManagerForApplication.cpp
         ${source_DIR}/skyline/services/account/IProfile.cpp
-        ${source_DIR}/skyline/services/account/IAsyncContext.cpp
-        ${source_DIR}/skyline/services/account/IAuthorizationRequest.cpp
         ${source_DIR}/skyline/services/friends/IServiceCreator.cpp
         ${source_DIR}/skyline/services/friends/IFriendService.cpp
         ${source_DIR}/skyline/services/friends/INotificationService.cpp
@@ -516,34 +380,10 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/mii/IStaticService.cpp
         ${source_DIR}/skyline/services/mii/IDatabaseService.cpp
         ${source_DIR}/skyline/services/olsc/IOlscServiceForApplication.cpp
-        ${source_DIR}/skyline/services/clkrst/IClkrstManager.cpp
-        ${source_DIR}/skyline/services/clkrst/IClkrstSession.cpp
-        ${source_DIR}/skyline/services/psm/IPsmServer.cpp
-        ${source_DIR}/skyline/services/psm/IPsmSession.cpp
-        ${source_DIR}/skyline/services/ts/IMeasurementServer.cpp
-        ${source_DIR}/skyline/services/ts/ISession.cpp
-        ${source_DIR}/skyline/services/ntc/IEnsureNetworkClockAvailabilityService.cpp
         )
 target_include_directories(skyline PRIVATE ${source_DIR}/skyline)
 # target_precompile_headers(skyline PRIVATE ${source_DIR}/skyline/common.h) # PCH will currently break Intellisense
 target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-extensions -Wno-c++17-extensions -Wno-c99-designator -Wno-reorder -Wno-missing-braces -Wno-unused-variable -Wno-unused-private-field -Wno-dangling-else -Wconversion -fsigned-bitfields)
 
-target_link_options(skyline PRIVATE "-Wl,--build-id=sha1")
-target_compile_options(skyline PRIVATE -g)
-
 target_link_libraries(skyline PRIVATE shader_recompiler audio_core)
-if (STRATO_JIT_ENABLED)
-    target_link_libraries(skyline PRIVATE dynarmic)
-    target_compile_definitions(skyline PRIVATE STRATO_JIT_FALLBACK=1)
-
-    # Also write Dynarmic's own disassembly of the translated block to the log, once per distinct instruction (slow, only for investigating)
-    option(STRATO_JIT_DUMP_DISASSEMBLY "Include Dynarmic's disassembly of the translated block in nce_fallback.jsonl" OFF)
-    if (STRATO_JIT_DUMP_DISASSEMBLY)
-        target_compile_definitions(skyline PRIVATE STRATO_JIT_DUMP_DISASSEMBLY=1)
-    endif ()
-endif ()
-target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container Boost::preprocessor Boost::regex range-v3 adrenotools tsl::robin_map)
-add_dependencies(skyline frame_gen_shaders)
-
-add_dependencies(skyline strato_video_ffmpeg)
-target_link_libraries(skyline PRIVATE strato_avcodec strato_avutil m)
+target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container range-v3 adrenotools tsl::robin_map)

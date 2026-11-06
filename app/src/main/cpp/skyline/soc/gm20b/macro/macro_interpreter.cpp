@@ -34,7 +34,7 @@ namespace skyline::soc::gm20b::engine {
 
             case Opcode::Operation::AddImmediate:
                 HandleAssignment(opcode->assignmentOperation, opcode->dest,
-                                 static_cast<u32>(static_cast<i32>(registers[opcode->srcA]) + opcode->immediate));
+                                 registers[opcode->srcA] + static_cast<u32>(opcode->immediate));
                 break;
 
             case Opcode::Operation::BitfieldReplace: {
@@ -75,7 +75,7 @@ namespace skyline::soc::gm20b::engine {
             }
 
             case Opcode::Operation::ReadImmediate: {
-                u32 result{engine->ReadMethodFromMacro(static_cast<u32>(static_cast<i32>(registers[opcode->srcA]) + opcode->immediate))};
+                u32 result{engine->ReadMethodFromMacro(registers[opcode->srcA] + static_cast<u32>(opcode->immediate))};
                 HandleAssignment(opcode->assignmentOperation, opcode->dest, result);
                 break;
             }
@@ -138,13 +138,15 @@ namespace skyline::soc::gm20b::engine {
             case Opcode::AluOperation::Subtract: {
                 u64 result{static_cast<u64>(srcA) - srcB};
 
-                carryFlag = result & 0xFFFFFFFF;
+                // Carry denotes absence of borrow, including an exact-zero result.
+                carryFlag = result <= 0xFFFFFFFFULL;
                 return static_cast<u32>(result);
             }
             case Opcode::AluOperation::SubtractWithBorrow: {
                 u64 result{static_cast<u64>(srcA) - srcB - !carryFlag};
 
-                carryFlag = result & 0xFFFFFFFF;
+                // Carry denotes absence of borrow, including an exact-zero result.
+                carryFlag = result <= 0xFFFFFFFFULL;
                 return static_cast<u32>(result);
             }
             case Opcode::AluOperation::BitwiseXor:
@@ -157,6 +159,8 @@ namespace skyline::soc::gm20b::engine {
                 return srcA & ~srcB;
             case Opcode::AluOperation::BitwiseNand:
                 return ~(srcA & srcB);
+            default:
+                throw exception("Unknown MME ALU operation: 0x{:X}", static_cast<u8>(operation));
         }
     }
 

@@ -85,7 +85,7 @@ namespace skyline::soc::gm20b::engine {
                 u8 destBit : 5;
 
                 u32 GetMask() {
-                    return (1 << size) - 1;
+                    return (u32{1} << size) - 1;
                 }
             } bitfield;
         };
@@ -111,7 +111,7 @@ namespace skyline::soc::gm20b::engine {
         std::array<u32, 8> registers{}; //!< The state of all the general-purpose registers in the macro interpreter
         const u32 *argument{}; //!< A pointer to the argument buffer for the program, it is read from sequentially
         MethodAddress methodAddress{};
-        bool carryFlag{}; //!< A flag representing if an arithmetic operation has set the most significant bit
+        bool carryFlag{}; //!< Carry out for addition, absence of borrow for subtraction
 
         /**
          * @brief Steps forward one macro instruction, including delay slots
