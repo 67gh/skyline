@@ -1,0 +1,22 @@
+SKYLINE — Correctifs de préparation GitHub Actions (sans compilation)
+
+FICHIERS MODIFIÉS
+- gradle/wrapper/gradle-wrapper.properties : Gradle 8.2 (AGP 8.2.1 exige Gradle 8.2+).
+- app/build.gradle : suppression des blocs de signingConfigs/buildTypes dupliqués (release dépendant d'un keystore absent) ; ajout des deux manifest placeholders requis appLabel et shouldSaveUserData.
+- app/CMakeLists.txt : ne tente plus de générer deux shaders optionnels absents de l'archive.
+- .github/workflows/build.yml : build mainlineDebug arm64-v8a, JDK 17, SDK 34, NDK 26.1.10909125, CMake 3.22.1, récupération des git submodules et artifact APK (v4). Aucun secret ni keystore nécessaire.
+- .github/workflows/ci.yml : ancien CI désactivé pour les push/PR afin d'éviter des jobs concurrents utilisant upload-artifact@v3.
+
+IMPORTANT : LIMITES
+- Aucun APK n'a été compilé. Ce patch corrige des blocages de configuration observés mais ne prouve pas que le C++ ou Kotlin compilent.
+- Les sous-modules Git sont absents du ZIP (notamment fmt, boost, dynarmic). Il faut conserver les gitlinks originaux et pousser le projet comme dépôt Git avec sous-modules, pas seulement un ZIP importé dans GitHub sans historique Git.
+- Le code présent dans skyline.zip comprend des éléments 'Strato', dont le namespace org.stratoemu.strato. Je ne les ai pas renommés pour éviter des cassures.
+- Le build produit un APK DEBUG signé par la clé debug Android générée par Gradle, uniquement ARM64 ; il ne s'agit pas d'une version release signée pour publication.
+- Les workflows ne peuvent pas à eux seuls corriger des dépendances supprimées/inaccessibles ou des erreurs C++ du projet.
+
+APPLICATION
+1. Décompresser ce patch au même niveau que le dossier skyline du projet ; copier les fichiers sur leurs chemins correspondants.
+2. Commiter et pousser les modifications dans un dépôt GitHub conservant les sous-modules.
+3. Actions > Build Android ARM64 APK > Run workflow (ou push).
+4. Une fois le job terminé avec succès : télécharger l'artifact skyline-arm64-debug dans le résumé du run.
+5. Si échec, récupérer la première erreur significative du log, notamment dans CMake/NDK/Kotlin.

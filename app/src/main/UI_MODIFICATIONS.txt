@@ -1,0 +1,10 @@
+Skyline UI-only transplant from Strato
+
+- Categories landing page for Settings using Skyline original preference XML and logic.
+- Category icons and small layouts taken from Strato, with namespace-independent XML.
+- One-time library layout selector on first launch; change layout later in Settings.
+- Existing Skyline settings button continues opening SettingsActivity.
+- No modifications to C++, GPU, renderer, game loading, JNI or native settings.
+- This patch applies over skyline.zip; may be combined with the earlier GitHub build patch.
+- Not compiled or device tested.
+- UI differences requiring Strato-only services (diagnostic exports, multi-folder implementation, firmware importer, update installer) intentionally excluded.

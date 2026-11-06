@@ -55,6 +55,7 @@ render.experimental.xml
 .idea/modules.xml
 .idea/navEditor.xml
 .idea/runConfigurations.xml
+.idea/appInsightsSettings.xml
 
 # Keystore files
 *.jks
@@ -100,9 +101,6 @@ lint/reports/
 
 # Adreno Validation Layer
 libVkLayer_adreno.so
-
-# Skyline logs
-*.sklog
 
 # Android Studio Profiler Traces
 *.trace

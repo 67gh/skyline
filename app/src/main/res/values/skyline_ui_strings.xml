@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_controllers_ui">Controllers</string>
+    <string name="settings_graphics_ui">Graphics</string>
+    <string name="settings_display_ui">Display and layout</string>
+    <string name="welcome_ui_title">Welcome to Skyline</string>
+    <string name="welcome_ui_message">Choose the game library layout. You can change it later in Settings.</string>
+    <string name="welcome_ui_continue">Continue</string>
+    <string name="welcome_ui_settings">Open settings</string>
+</resources>
