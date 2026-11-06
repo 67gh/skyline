@@ -13,28 +13,6 @@ idea.module {
 }
 
 android {
-    signingConfigs {
-    release {
-        storeFile file("strato-release.keystore")
-        storePassword "strato2024"
-        keyAlias "strato-key"
-        keyPassword "strato2024"
-        enableV1Signing true
-        enableV2Signing true
-    }
-}
-
-buildTypes {
-    release {
-        signingConfig signingConfigs.release
-        minifyEnabled false
-        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-    }
-    debug {
-        signingConfig signingConfigs.release
-    }
-}
-
     namespace 'org.stratoemu.strato'
     compileSdk 34
 
@@ -54,6 +32,8 @@ buildTypes {
 
         // Disable the use of a separate process for emulation by default
         manifestPlaceholders["emulationProcess"] = ""
+        manifestPlaceholders["appLabel"] = "Skyline"
+        manifestPlaceholders["shouldSaveUserData"] = "true"
 
         def locales = ["en", "de", "el", "es", "es-419", "fr", "hu", "id", "it", "ja", "ko", "pl", "ru", "ta", "zh-Hans", "zh-Hant"]
 
@@ -85,7 +65,7 @@ buildTypes {
             debuggable true
             externalNativeBuild {
                 cmake {
-                    arguments "-DCMAKE_BUILD_TYPE=RELEASE", "-DSTRATO_JIT_FALLBACK=ON"
+                    arguments "-DCMAKE_BUILD_TYPE=RELEASE", "-DSTRATO_JIT_FALLBACK=OFF"
                 }
             }
             minifyEnabled true
@@ -99,7 +79,7 @@ buildTypes {
             debuggable true
             externalNativeBuild {
                 cmake {
-                    arguments "-DCMAKE_BUILD_TYPE=RELWITHDEBINFO", "-DSTRATO_JIT_FALLBACK=ON"
+                    arguments "-DCMAKE_BUILD_TYPE=RELWITHDEBINFO", "-DSTRATO_JIT_FALLBACK=OFF"
                 }
             }
             minifyEnabled false
@@ -111,7 +91,7 @@ buildTypes {
             debuggable true
             externalNativeBuild {
                 cmake {
-                    arguments "-DSTRATO_JIT_FALLBACK=ON"
+                    arguments "-DSTRATO_JIT_FALLBACK=OFF"
                 }
             }
             minifyEnabled false

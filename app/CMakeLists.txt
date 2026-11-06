@@ -17,7 +17,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -flto=full -fno-stack-protector -DNDEBUG")
 # step rather than a CMake rule, the fg_*.comp shaders below should be moved to follow the same
 # process instead so all shaders stay consistent - this rule is a self-contained fallback.
 find_program(GLSLC_EXECUTABLE glslc HINTS "$ENV{VULKAN_SDK}/bin" "${ANDROID_NDK}/shader-tools/${ANDROID_NDK_HOST_SYSTEM_NAME}")
-if(GLSLC_EXECUTABLE)
+if(GLSLC_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/src/main/shaders/fg_motion_estimate.comp" AND EXISTS "${CMAKE_SOURCE_DIR}/src/main/shaders/fg_frame_interpolate.comp")
     set(FRAME_GEN_SHADER_SRC_DIR ${CMAKE_SOURCE_DIR}/src/main/shaders)
     set(FRAME_GEN_SHADER_OUT_DIR ${CMAKE_SOURCE_DIR}/src/main/assets/shaders)
     file(MAKE_DIRECTORY ${FRAME_GEN_SHADER_OUT_DIR})
@@ -42,7 +42,7 @@ if(GLSLC_EXECUTABLE)
 
     add_custom_target(frame_gen_shaders DEPENDS ${FRAME_GEN_SHADER_OUTPUTS})
 else()
-    message(WARNING "glslc not found - frame generation shaders will not be compiled, the feature will fail to initialize at runtime. Install the Vulkan SDK or set VULKAN_SDK.")
+    message(STATUS "Optional frame generation shaders unavailable; skipping their compilation")
     add_custom_target(frame_gen_shaders)
 endif()
 
@@ -132,7 +132,7 @@ add_subdirectory("libraries/robin-map")
 
 # Dynarmic JIT used to execute guest instructions that NCE can't run natively (see skyline/nce/jit_fallback.h)
 # It is enabled by default but only built if the submodule was fetched.
-option(STRATO_JIT_FALLBACK "Enable the Dynarmic JIT fallback for instructions NCE fails on" ON)
+option(STRATO_JIT_FALLBACK "Enable the Dynarmic JIT fallback for instructions NCE fails on" OFF)
 set(STRATO_JIT_ENABLED OFF)
 
 if (STRATO_JIT_FALLBACK)

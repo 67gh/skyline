@@ -1,20 +1,8 @@
-name: Edge CI
-
+name: Legacy Edge CI (disabled)
 on:
-  pull_request_target:
-    types: [synchronize, reopened, closed, labeled, unlabeled]
-
+  workflow_dispatch:
 jobs:
-  update-patches:
-    # Run if the 'edge' label was added/removed, or if an edge PR was synchronized/reopened/closed
-    if: |
-      github.event.label.name == 'edge' ||
-      !contains(github.event.action, 'labeled') && contains(github.event.pull_request.labels.*.name, 'edge')
+  notice:
     runs-on: ubuntu-latest
     steps:
-      - name: Update Edge patches
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.EDGE_PATCH_PAT }}
-          repository: skyline-emu/edge-patch
-          event-type: update-patches
+      - run: echo "Legacy edge automation is disabled for this source build."
