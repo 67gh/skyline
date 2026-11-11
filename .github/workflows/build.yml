@@ -56,6 +56,9 @@ jobs:
 
       - name: Cache Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # Les sous-modules (ex. oboe) contiennent des gradle-wrapper.jar tiers inconnus du validateur
+          validate-wrappers: false
 
       - name: Assemble ARM64 debug APK
         shell: bash
