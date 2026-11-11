@@ -30,6 +30,14 @@ android {
             abiFilters "arm64-v8a"
         }
 
+        externalNativeBuild {
+            cmake {
+                // Boost.Preprocessor n'est pas exposé par les cibles Boost::intrusive/container de ce fork
+                // (maxwell_3d.cpp inclut boost/preprocessor/repeat.hpp)
+                cppFlags "-isystem ${projectDir}/libraries/boost/libs/preprocessor/include"
+            }
+        }
+
         // Disable the use of a separate process for emulation by default
         manifestPlaceholders["emulationProcess"] = ""
         manifestPlaceholders["appLabel"] = "Skyline"
