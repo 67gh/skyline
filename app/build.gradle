@@ -13,11 +13,11 @@ idea.module {
 }
 
 android {
-    namespace 'org.stratoemu.strato'
+    namespace 'emu.skyline'
     compileSdk 34
 
     defaultConfig {
-        applicationId "org.stratoemu.strato"
+        applicationId "emu.skyline"
 
         minSdk 29
         targetSdk 33
