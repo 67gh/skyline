@@ -466,7 +466,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
             } catch (ignored : Exception) { }
 
             resumeEmulator()
-            
+
             binding.onScreenControllerView.apply {
                 controllerType = inputHandler.getFirstControllerType()
                 isGone = controllerType == ControllerType.None || !appSettings.onScreenControl
@@ -576,7 +576,8 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                     builtinVibrator
                 } else {
                     for (id in InputDevice.getDeviceIds()) {
-                        val device = InputDevice.getDevice(id)
+                        // InputDevice.getDevice() is nullable since compileSdk 34 (device disconnected between getDeviceIds() and here)
+                        val device = InputDevice.getDevice(id) ?: continue
                         if (device.descriptor == inputManager.controllers[index]!!.rumbleDeviceDescriptor) {
                             val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                                 device.vibratorManager.defaultVibrator

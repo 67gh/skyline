@@ -10,12 +10,15 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.KeyEvent
 import android.view.Menu
+import android.view.View
 import android.view.ViewTreeObserver
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.view.WindowCompat
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -37,6 +40,14 @@ import emu.skyline.utils.WindowInsetsHelper
 private const val PREFERENCE_DIALOG_FRAGMENT_TAG = "androidx.preference.PreferenceFragment.DIALOG"
 
 class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPreferenceDisplayDialogCallback {
+    companion object {
+        /** Optional string resource id used as the title of the screen (see [SettingsHomeFragment]) */
+        const val EXTRA_TITLE = "settings_title"
+
+        /** Optional array of preference category keys, only these categories are shown when it is supplied (see [SettingsHomeFragment]) */
+        const val EXTRA_CATEGORIES = "settings_categories"
+    }
+
     val binding by lazy { SettingsActivityBinding.inflate(layoutInflater) }
     val hiddenCategoriesFromSearch = if (BuildConfig.BUILD_TYPE == "release") {
         arrayOf("category_debug", "category_credits", "category_licenses")
@@ -67,6 +78,19 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
 
         setSupportActionBar(binding.titlebar.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        // Title requested by the settings category index, if any
+        intent.getIntExtra(EXTRA_TITLE, 0).takeIf { it != 0 }?.let { supportActionBar?.setTitle(it) }
+
+        // Only show the preference categories requested by the settings category index, if any
+        intent.getStringArrayExtra(EXTRA_CATEGORIES)?.let { categoryKeys ->
+            supportFragmentManager.registerFragmentLifecycleCallbacks(object : FragmentManager.FragmentLifecycleCallbacks() {
+                override fun onFragmentViewCreated(fm : FragmentManager, f : Fragment, v : View, savedInstanceState : Bundle?) {
+                    if (f is PreferenceFragmentCompat)
+                        f.preferenceScreen.forEach { category -> category.isVisible = category.key.orEmpty() in categoryKeys }
+                }
+            }, false)
+        }
 
         var layoutDone = false // Tracks if the layout is complete to avoid retrieving invalid attributes
         binding.coordinatorLayout.viewTreeObserver.addOnTouchModeChangeListener { isTouchMode ->
