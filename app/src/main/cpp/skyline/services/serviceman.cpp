@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <fstream>
+#include <os.h>
 #include <kernel/types/KProcess.h>
 #include <common/trace.h>
 #include "sm/IUserInterface.h"
+#include "stub/IStubService.h"
 #include "settings/ISettingsServer.h"
 #include "settings/ISystemSettingsServer.h"
 #include "apm/IManager.h"
@@ -76,6 +79,22 @@ namespace skyline::service {
         explicit GlobalServiceState(const DeviceState &state) : timesrv(state), sharedFontCore(state), sharedIirCore(state), nvdrv(state) {}
     };
 
+    /**
+     * @return If the service is listed in the optional "stub_services.txt" file of the public app files directory (one service name per line, empty lines and lines starting with '#' are ignored)
+     */
+    static bool IsServiceStubbedByUser(const DeviceState &state, std::string_view serviceName) {
+        std::ifstream file(state.os->publicAppFilesPath + "stub_services.txt");
+        std::string line;
+        while (std::getline(file, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t'))
+                line.pop_back();
+
+            if (!line.empty() && line.front() != '#' && line == serviceName)
+                return true;
+        }
+        return false;
+    }
+
     ServiceManager::ServiceManager(const DeviceState &state) : state(state), smUserInterface(std::make_shared<sm::IUserInterface>(state, *this)), globalServiceState(std::make_shared<GlobalServiceState>(state)) {}
 
     std::shared_ptr<BaseService> ServiceManager::CreateOrGetService(ServiceName name) {
@@ -144,9 +163,18 @@ namespace skyline::service {
             SERVICE_CASE(mii::IStaticService, "mii:e")
             SERVICE_CASE(mii::IStaticService, "mii:u")
             SERVICE_CASE(olsc::IOlscServiceForApplication, "olsc:u")
-            default:
+            default: {
                 std::string_view nameString(span(reinterpret_cast<char *>(&name), sizeof(name)).as_string(true));
+
+                if (IsServiceStubbedByUser(state, nameString)) {
+                    Logger::Warn("Service \"{}\" has not been implemented, using a stub as it is listed in stub_services.txt", nameString);
+                    std::shared_ptr<BaseService> serviceObject{std::make_shared<stub::IStubService>(state, *this, std::string(nameString))};
+                    serviceMap[name] = serviceObject;
+                    return serviceObject;
+                }
+
                 throw std::out_of_range(fmt::format("CreateService called with an unknown service name: {}", nameString));
+            }
         }
     }
 
