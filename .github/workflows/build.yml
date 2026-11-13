@@ -5,8 +5,9 @@ on:
   push:
     branches: ["**"]
 
+# contents: write est nécessaire pour créer la release GitHub
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: skyline-build-${{ github.workflow }}-${{ github.ref }}
@@ -60,6 +61,34 @@ jobs:
           # Les sous-modules (ex. oboe) contiennent des gradle-wrapper.jar tiers inconnus du validateur
           validate-wrappers: false
 
+      # Les mises à jour dans l'application exigent que chaque APK soit signé avec la même clé.
+      # Si les secrets KEYSTORE_B64, KEYSTORE_PASS, KEY_ALIAS et KEY_PASS existent, ils sont utilisés ;
+      # sinon la clé de test .github/skyline-ci.keystore (publique, donc sans valeur secrète) est utilisée.
+      - name: Prepare signing key
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_B64:-}" ]; then
+            echo "$KEYSTORE_B64" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/skyline.keystore"
+            STORE_PASS="$KEYSTORE_PASS"; ALIAS="${KEY_ALIAS:-skyline}"; KPASS="${KEY_PASS:-$KEYSTORE_PASS}"
+            echo "Signing with the repository secrets"
+          else
+            cp .github/skyline-ci.keystore "$RUNNER_TEMP/skyline.keystore"
+            STORE_PASS="skylineci"; ALIAS="skyline"; KPASS="skylineci"
+            echo "::warning::No signing secret found, using the public test key .github/skyline-ci.keystore"
+          fi
+          {
+            echo "SIGN_STORE_FILE=$RUNNER_TEMP/skyline.keystore"
+            echo "SIGN_STORE_PASS=$STORE_PASS"
+            echo "SIGN_KEY_ALIAS=$ALIAS"
+            echo "SIGN_KEY_PASS=$KPASS"
+          } >> "$GITHUB_ENV"
+
       - name: Assemble ARM64 debug APK
         shell: bash
         env:
@@ -67,7 +96,11 @@ jobs:
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleMainlineDebug --no-daemon --stacktrace --build-cache --max-workers=2
+          ./gradlew :app:assembleMainlineDebug --no-daemon --stacktrace --build-cache --max-workers=2 \
+            -Pandroid.injected.signing.store.file="$SIGN_STORE_FILE" \
+            -Pandroid.injected.signing.store.password="$SIGN_STORE_PASS" \
+            -Pandroid.injected.signing.key.alias="$SIGN_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$SIGN_KEY_PASS"
 
       - name: Collect APK and verify output
         shell: bash
@@ -77,12 +110,41 @@ jobs:
           find app/build/outputs/apk -type f -name '*.apk' -print
           apk="$(find app/build/outputs/apk/mainline/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$apk" && test -s "$apk"
-          cp "$apk" apk-artifact/skyline-arm64-debug.apk
+          cp "$apk" apk-artifact/skyline-mainline-debug.apk
+          git rev-parse HEAD > apk-artifact/release-commit.txt
 
       - name: Publish APK
         uses: actions/upload-artifact@v4
         with:
           name: skyline-arm64-debug
-          path: apk-artifact/skyline-arm64-debug.apk
+          path: apk-artifact/skyline-mainline-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      # Une release GitHub (pré-version) est créée pour les builds de la branche principale ;
+      # l'application la lit pour proposer la mise à jour. Le tag est vAAAA.MM.JJ-<12 premiers caractères du commit>.
+      - name: Publish GitHub release
+        if: github.ref == 'refs/heads/ftx1' || github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$(date -u +%Y.%m.%d)-${GITHUB_SHA:0:12}"
+          {
+            echo "### Téléchargement"
+            echo "Télécharge **skyline-mainline-debug.apk** puis installe-le (ou laisse l'application proposer la mise à jour)."
+            echo
+            echo "### Derniers changements"
+            git log -8 --pretty=format:'- %s (%h)'
+          } > release-notes.md
+          # Un nouveau build du même commit remplace la release précédente
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          gh release create "$TAG" apk-artifact/skyline-mainline-debug.apk \
+            --target "$GITHUB_SHA" \
+            --title "Skyline $TAG" \
+            --notes-file release-notes.md \
+            --prerelease
+          echo "Release $TAG published"

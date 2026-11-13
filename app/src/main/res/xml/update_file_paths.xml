@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Legacy update location retained; new downloads use the internal cache. -->
+    <external-files-path name="updates" path="updates/" />
+    <cache-path name="update_cache" path="updates/" />
+</paths>

@@ -40,8 +40,9 @@ class MainViewModel @Inject constructor(@ApplicationContext context : Context, p
      * This refreshes the contents of the adapter by either trying to load cached adapter data or searches for them to recreate a list
      *
      * @param loadFromFile If this is false then trying to load cached adapter data is skipped entirely
+     * @param searchLocations Every game folder to search, the keys found in any of them are imported
      */
-    fun loadRoms(context : Context, loadFromFile : Boolean, searchLocation : Uri, systemLanguage : Int) {
+    fun loadRoms(context : Context, loadFromFile : Boolean, searchLocations : List<Uri>, systemLanguage : Int) {
         if (state == MainState.Loading) return
         state = MainState.Loading
 
@@ -57,13 +58,19 @@ class MainViewModel @Inject constructor(@ApplicationContext context : Context, p
                 }
             }
 
-            state = if (searchLocation.toString().isEmpty()) {
+            state = if (searchLocations.isEmpty()) {
                 @Suppress("ReplaceWithEnumMap")
                 MainState.Loaded(HashMap())
             } else {
                 try {
-                    KeyReader.importFromLocation(context, searchLocation)
-                    val romElements = romProvider.loadRoms(searchLocation, systemLanguage)
+                    searchLocations.forEach { location ->
+                        try {
+                            KeyReader.importFromLocation(context, location)
+                        } catch (e : Exception) {
+                            Log.w(TAG, "Couldn't look for keys in '$location': ${e.message}")
+                        }
+                    }
+                    val romElements = romProvider.loadRoms(searchLocations, systemLanguage)
                     romElements.toFile(romsFile)
                     MainState.Loaded(romElements)
                 } catch (e : Exception) {
@@ -77,11 +84,11 @@ class MainViewModel @Inject constructor(@ApplicationContext context : Context, p
     /**
      * This checks if the roms have changed since the last time they were loaded and if so it reloads them
      */
-    fun checkRomHash(searchLocation : Uri, systemLanguage : Int) {
+    fun checkRomHash(searchLocations : List<Uri>, systemLanguage : Int) {
         if(state !is MainState.Loaded) return
         CoroutineScope(Dispatchers.IO).launch {
             val currentHash = (state as MainState.Loaded).items.hashCode()
-            val romElements = romProvider.loadRoms(searchLocation, systemLanguage)
+            val romElements = romProvider.loadRoms(searchLocations, systemLanguage)
             val newHash = romElements.hashCode()
             if (newHash != currentHash) {
                 state = MainState.Loaded(romElements)

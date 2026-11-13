@@ -23,9 +23,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import emu.skyline.adapter.*
@@ -43,6 +45,9 @@ import emu.skyline.settings.EmulationSettings
 import emu.skyline.settings.SettingsActivity
 import emu.skyline.utils.GpuDriverHelper
 import emu.skyline.utils.WindowInsetsHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.math.ceil
 
@@ -50,6 +55,10 @@ import kotlin.math.ceil
 class MainActivity : AppCompatActivity() {
     companion object {
         private val formatOrder = listOf(RomFormat.NSP, RomFormat.XCI, RomFormat.NRO, RomFormat.NSO, RomFormat.NCA)
+
+        // Repository checked for updates -- change these if you fork this project further
+        private const val UPDATE_REPO_OWNER = "67gh"
+        private const val UPDATE_REPO_NAME = "skyline"
     }
 
     private val binding by lazy { MainActivityBinding.inflate(layoutInflater) }
@@ -82,13 +91,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-    private val documentPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
-        it?.let { uri ->
-            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            appSettings.searchLocation = uri.toString()
-
-            loadRoms(false)
-        }
+    /**
+     * The first-run setup (game folders, keys), the games are loaded once it's closed
+     */
+    private val setupCallback = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (appSettings.refreshRequired) loadRoms(false)
     }
 
     private val settingsCallback = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -130,6 +137,10 @@ class MainActivity : AppCompatActivity() {
 
         setupAppList()
 
+        // A fresh install goes through the setup screen first, someone who already has a game folder (an update) or who skipped it never sees it
+        if (savedInstanceState == null && !appSettings.setupCompleted && appSettings.searchLocationList.isEmpty())
+            setupCallback.launch(Intent(this, SetupActivity::class.java))
+
         binding.swipeRefreshLayout.apply {
             setProgressBackgroundColorSchemeColor(obtainStyledAttributes(intArrayOf(R.attr.colorSurfaceVariant)).use { it.getColor(0, Color.BLACK) })
             setColorSchemeColors(obtainStyledAttributes(intArrayOf(R.attr.colorPrimary)).use { it.getColor(0, Color.WHITE) })
@@ -139,6 +150,9 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.stateData.observe(this, ::handleState)
         loadRoms(!appSettings.refreshRequired)
+
+        if (savedInstanceState == null)
+            checkForUpdate()
 
         binding.searchBar.apply {
             binding.logIcon.setOnClickListener {
@@ -220,8 +234,6 @@ class MainActivity : AppCompatActivity() {
 
         binding.appList.layoutManager = CustomLayoutManager(gridSpan)
         setAppListDecoration()
-
-        if (appSettings.searchLocation.isEmpty()) documentPicker.launch(null)
     }
 
     private fun getDataItems() = mutableListOf<DataItem>().apply {
@@ -299,8 +311,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadRoms(loadFromFile : Boolean) {
-        viewModel.loadRoms(this, loadFromFile, Uri.parse(appSettings.searchLocation), EmulationSettings.global.systemLanguage)
+        viewModel.loadRoms(this, loadFromFile, appSettings.searchLocationList, EmulationSettings.global.systemLanguage)
         appSettings.refreshRequired = false
+    }
+
+    /**
+     * Checks GitHub for a newer release. Automatic checks stay silent when there is no update, a manual check shows an explicit result
+     */
+    fun checkForUpdate(showResult : Boolean = false) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                UpdateChecker.checkForUpdate(UPDATE_REPO_OWNER, UPDATE_REPO_NAME, BuildConfig.BUILD_TIMESTAMP * 1000L, BuildConfig.BUILD_COMMIT_FULL)
+            }
+
+            if (isFinishing || isDestroyed) return@launch
+
+            val updateInfo = result.getOrNull()
+            if (result.isFailure || updateInfo == null) {
+                if (showResult)
+                    Snackbar.make(findViewById(android.R.id.content), getString(if (result.isFailure) R.string.error else R.string.sk_update_up_to_date), Snackbar.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val downloadUrl = updateInfo.downloadUrl
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(getString(R.string.sk_update_available_title))
+                .setMessage(getString(R.string.sk_update_available_message, updateInfo.tagName))
+                .setPositiveButton(getString(R.string.sk_update_available_action)) { _, _ ->
+                    if (downloadUrl != null)
+                        UpdateInstaller.downloadAndInstall(this@MainActivity, downloadUrl, updateInfo.tagName, updateInfo.downloadIsArchive)
+                    else
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.releaseUrl)))
+                }
+                .setNegativeButton(getString(R.string.sk_update_available_dismiss), null)
+                .show()
+        }
     }
 
     private fun populateAdapter() {
@@ -352,6 +397,6 @@ class MainActivity : AppCompatActivity() {
             adapter.notifyItemRangeChanged(0, adapter.currentItems.size)
         }
 
-        viewModel.checkRomHash(Uri.parse(appSettings.searchLocation), EmulationSettings.global.systemLanguage)
+        viewModel.checkRomHash(appSettings.searchLocationList, EmulationSettings.global.systemLanguage)
     }
 }

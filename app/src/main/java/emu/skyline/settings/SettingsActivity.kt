@@ -56,15 +56,34 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
     }
 
     /**
-     * The instance of [PreferenceFragmentCompat] that is shown inside [R.id.settings]
-     * Retrieves extras from the intent if any and instantiates the appropriate fragment
+     * The preference categories shown in this page, null if every category is shown
      */
-    private val preferenceFragment by lazy {
+    private val allowedCategories : Array<String>? by lazy { intent.getStringArrayExtra(EXTRA_CATEGORIES) }
+
+    /**
+     * If the home list of categories is displayed rather than a page of preferences
+     */
+    private val isHomePage by lazy { !intent.hasExtra(AppItemTag) && allowedCategories == null }
+
+    /**
+     * The fragment shown inside [R.id.settings]: the settings of a single game if the intent has one, a page with some categories of the global settings
+     * if the intent lists them, otherwise the home list of categories
+     */
+    private val initialFragment by lazy {
         if (intent.hasExtra(AppItemTag))
             GameSettingsFragment().apply { arguments = intent.extras }
-        else
+        else if (allowedCategories != null)
             GlobalSettingsFragment()
+        else
+            SettingsHomeFragment()
     }
+
+    /**
+     * The [PreferenceFragmentCompat] currently displayed, null while the home list is displayed
+     */
+    private val currentPreferenceFragment get() = supportFragmentManager.findFragmentById(R.id.settings) as? PreferenceFragmentCompat
+
+    private fun isCategoryAllowed(key : String?) = allowedCategories?.contains(key.orEmpty()) ?: true
 
     /**
      * This initializes all of the elements in the activity and displays the settings fragment
@@ -83,11 +102,11 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         intent.getIntExtra(EXTRA_TITLE, 0).takeIf { it != 0 }?.let { supportActionBar?.setTitle(it) }
 
         // Only show the preference categories requested by the settings category index, if any
-        intent.getStringArrayExtra(EXTRA_CATEGORIES)?.let { categoryKeys ->
+        allowedCategories?.let { _ ->
             supportFragmentManager.registerFragmentLifecycleCallbacks(object : FragmentManager.FragmentLifecycleCallbacks() {
                 override fun onFragmentViewCreated(fm : FragmentManager, f : Fragment, v : View, savedInstanceState : Bundle?) {
                     if (f is PreferenceFragmentCompat)
-                        f.preferenceScreen.forEach { category -> category.isVisible = category.key.orEmpty() in categoryKeys }
+                        f.preferenceScreen.forEach { category -> category.isVisible = isCategoryAllowed(category.key) }
                 }
             }, false)
         }
@@ -141,15 +160,26 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
         // Reset the subtitle to null
         supportActionBar?.subtitle = null
 
-        supportFragmentManager
-            .beginTransaction()
-            .replace(R.id.settings, preferenceFragment)
-            .commit()
+        if (savedInstanceState == null) {
+            supportFragmentManager
+                .beginTransaction()
+                .replace(R.id.settings, initialFragment)
+                .commitNow()
+        }
+    }
+
+    /**
+     * The up arrow closes the page, which goes back to the home list when this is a category page
+     */
+    override fun onSupportNavigateUp() : Boolean {
+        finish()
+        return true
     }
 
     override fun onCreateOptionsMenu(menu : Menu?) : Boolean {
         menuInflater.inflate(R.menu.settings_menu, menu)
         val menuItem = menu!!.findItem(R.id.app_bar_search)
+        menuItem.isVisible = !isHomePage
         val searchView = menuItem.actionView as SearchView
         searchView.queryHint = getString(R.string.search)
 
@@ -169,8 +199,8 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
             override fun onQueryTextChange(newText : String) : Boolean {
                 val queries = newText.split(",")
                 if (newText.isNotEmpty()) {
-                    preferenceFragment.preferenceScreen.forEach { preferenceCategory ->
-                        if (hiddenCategoriesFromSearch.contains(preferenceCategory.key)) {
+                    currentPreferenceFragment?.preferenceScreen?.forEach { preferenceCategory ->
+                        if (hiddenCategoriesFromSearch.contains(preferenceCategory.key) || !isCategoryAllowed(preferenceCategory.key)) {
                             preferenceCategory.isVisible = false
                             return@forEach
                         }
@@ -186,8 +216,8 @@ class SettingsActivity : AppCompatActivity(), PreferenceFragmentCompat.OnPrefere
                         preferenceCategory.isVisible = !areAllPrefsHidden || queryMatchesCategory
                     }
                 } else { // If user input is empty, show all preferences
-                    preferenceFragment.preferenceScreen.forEach { preferenceCategory ->
-                        preferenceCategory.isVisible = true
+                    currentPreferenceFragment?.preferenceScreen?.forEach { preferenceCategory ->
+                        preferenceCategory.isVisible = isCategoryAllowed(preferenceCategory.key)
                         (preferenceCategory as PreferenceCategory).forEach { preference ->
                             preference.isVisible = true
                         }
