@@ -62,8 +62,9 @@ jobs:
           validate-wrappers: false
 
       # Les mises à jour dans l'application exigent que chaque APK soit signé avec la même clé.
-      # Si les secrets KEYSTORE_B64, KEYSTORE_PASS, KEY_ALIAS et KEY_PASS existent, ils sont utilisés ;
-      # sinon la clé de test .github/skyline-ci.keystore (publique, donc sans valeur secrète) est utilisée.
+      # Ordre de préférence : les secrets KEYSTORE_B64, KEYSTORE_PASS, KEY_ALIAS et KEY_PASS ; sinon la clé de test publique
+      # .github/skyline-ci.keystore.b64 (texte base64, sans valeur secrète) ; sinon une clé générée à la volée, avec laquelle le build
+      # réussit mais l'APK ne pourra pas remplacer un APK construit avec une autre clé.
       - name: Prepare signing key
         shell: bash
         env:
@@ -73,17 +74,27 @@ jobs:
           KEY_PASS: ${{ secrets.KEY_PASS }}
         run: |
           set -euo pipefail
+          KEYSTORE_FILE="$RUNNER_TEMP/skyline.keystore"
           if [ -n "${KEYSTORE_B64:-}" ]; then
-            echo "$KEYSTORE_B64" | tr -d '\n' | base64 -d > "$RUNNER_TEMP/skyline.keystore"
+            echo "$KEYSTORE_B64" | tr -d '\n' | base64 -d > "$KEYSTORE_FILE"
             STORE_PASS="$KEYSTORE_PASS"; ALIAS="${KEY_ALIAS:-skyline}"; KPASS="${KEY_PASS:-$KEYSTORE_PASS}"
             echo "Signing with the repository secrets"
-          else
-            cp .github/skyline-ci.keystore "$RUNNER_TEMP/skyline.keystore"
+          elif [ -f .github/skyline-ci.keystore.b64 ]; then
+            tr -d '\n' < .github/skyline-ci.keystore.b64 | base64 -d > "$KEYSTORE_FILE"
+            STORE_PASS="skylineci"; ALIAS="skyline"; KPASS="skylineci"
+            echo "::warning::No signing secret found, using the public test key .github/skyline-ci.keystore.b64"
+          elif [ -f .github/skyline-ci.keystore ]; then
+            cp .github/skyline-ci.keystore "$KEYSTORE_FILE"
             STORE_PASS="skylineci"; ALIAS="skyline"; KPASS="skylineci"
             echo "::warning::No signing secret found, using the public test key .github/skyline-ci.keystore"
+          else
+            keytool -genkeypair -keystore "$KEYSTORE_FILE" -storepass skylineci -keypass skylineci -alias skyline \
+              -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Skyline CI, O=Skyline, C=FR"
+            STORE_PASS="skylineci"; ALIAS="skyline"; KPASS="skylineci"
+            echo "::warning::No signing key in the repository, generated a throwaway key: this APK cannot update an APK signed with another key"
           fi
           {
-            echo "SIGN_STORE_FILE=$RUNNER_TEMP/skyline.keystore"
+            echo "SIGN_STORE_FILE=$KEYSTORE_FILE"
             echo "SIGN_STORE_PASS=$STORE_PASS"
             echo "SIGN_KEY_ALIAS=$ALIAS"
             echo "SIGN_KEY_PASS=$KPASS"
