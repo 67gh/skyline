@@ -49,10 +49,14 @@ namespace skyline::gpu::texture {
             // Iterate over every level, adding the size of the current level to the total size
             totalSize += (GobWidth * gobsWidth) * (GobHeight * util::AlignUp(gobsHeight, gobBlockHeight)) * util::AlignUp(gobsDepth, gobBlockDepth);
 
-            // Successively divide every dimension by 2 until the final level is reached, the division is rounded up to contain the padding GOBs
-            gobsWidth = std::max(util::DivideCeil(gobsWidth, 2UL), 1UL);
-            gobsHeight = std::max(util::DivideCeil(gobsHeight, 2UL), 1UL);
-            gobsDepth = std::max(gobsDepth / 2, 1UL); // The GOB depth is the same as the depth dimension and needs to be rounded down during the division
+            // Mip extents are floor-halved in texels BEFORE block/GOB rounding, halving the already padded GOB counts would keep an extra
+            // GOB for dimensions that aren't a multiple of the GOB size (e.g. a 65px wide RGBA level has 5 GOBs but its 32px mip only needs 2, not 3)
+            dimensions.width = std::max(dimensions.width / 2, 1U);
+            dimensions.height = std::max(dimensions.height / 2, 1U);
+            dimensions.depth = std::max(dimensions.depth / 2, 1U);
+            gobsWidth = util::DivideCeil<size_t>(util::DivideCeil<size_t>(dimensions.width, formatBlockWidth) * formatBpb, GobWidth);
+            gobsHeight = util::DivideCeil<size_t>(util::DivideCeil<size_t>(dimensions.height, formatBlockHeight), GobHeight);
+            gobsDepth = dimensions.depth; // The GOB depth is the same as the depth dimension
 
             gobBlockHeight = CalculateBlockGobs(gobBlockHeight, gobsHeight);
             gobBlockDepth = CalculateBlockGobs(gobBlockDepth, gobsDepth);
@@ -81,12 +85,13 @@ namespace skyline::gpu::texture {
                 gobBlockHeight, gobBlockDepth
             );
 
-            gobsWidth = std::max(util::DivideCeil(gobsWidth, 2UL), 1UL);
-            gobsHeight = std::max(util::DivideCeil(gobsHeight, 2UL), 1UL);
-
+            // Same as above: the next level's extents are computed in texels first, then rounded up to GOBs
             dimensions.width = std::max(dimensions.width / 2, 1U);
             dimensions.height = std::max(dimensions.height / 2, 1U);
             dimensions.depth = std::max(dimensions.depth / 2, 1U);
+
+            gobsWidth = util::DivideCeil<size_t>(util::DivideCeil<size_t>(dimensions.width, formatBlockWidth) * formatBpb, GobWidth);
+            gobsHeight = util::DivideCeil<size_t>(util::DivideCeil<size_t>(dimensions.height, formatBlockHeight), GobHeight);
 
             gobBlockHeight = CalculateBlockGobs(gobBlockHeight, gobsHeight);
             gobBlockDepth = CalculateBlockGobs(gobBlockDepth, static_cast<size_t>(dimensions.depth));
