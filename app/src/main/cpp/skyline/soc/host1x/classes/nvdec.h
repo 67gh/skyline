@@ -4,17 +4,20 @@
 #pragma once
 
 #include <common.h>
+#include <soc/host1x/video/decoder.h>
 
 namespace skyline::soc::host1x {
     /**
-     * @brief The NVDEC Host1x class implements hardware accelerated video decoding for the VP9/VP8/H264/VC1 codecs
+     * @brief NVDEC software decoding: progressive H264 and VP8, decoded on the CPU with FFmpeg
      */
     class NvDecClass {
       private:
+        const DeviceState &state;
+        video::Decoder engine;
         std::function<void()> opDoneCallback;
 
       public:
-        NvDecClass(std::function<void()> opDoneCallback);
+        NvDecClass(std::function<void()> opDoneCallback, const DeviceState &state);
 
         void CallMethod(u32 method, u32 argument);
     };

@@ -15,6 +15,9 @@ namespace skyline::service::nvdrv::device::nvhost {
     class Host1xChannel : public NvDevice {
       private:
         core::ChannelType channelType; //!< The specific host1x channel that this instance refers to
+        std::unique_ptr<soc::host1x::ChannelCommandFifo> videoChannel;
+        bool executionFailed{}; //!< Failed sessions must not reuse a partially advanced decoder
+        u32 submitTimeout{5000}; //!< Maximum time for a Host1x syncpoint wait (milliseconds)
         std::mutex channelMutex; //!< Synchronises submit operations
 
       public:

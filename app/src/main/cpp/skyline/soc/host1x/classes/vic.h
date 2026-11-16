@@ -4,17 +4,20 @@
 #pragma once
 
 #include <common.h>
+#include <soc/host1x/video/compositor.h>
 
 namespace skyline::soc::host1x {
     /**
-     * @brief The VIC Host1x class implements hardware accelerated image operations
+     * @brief VIC software single-slot conversion, scaling and surface writes
      */
     class VicClass {
       private:
+        const DeviceState &state;
+        video::Compositor engine;
         std::function<void()> opDoneCallback;
 
       public:
-        VicClass(std::function<void()> opDoneCallback);
+        VicClass(std::function<void()> opDoneCallback, const DeviceState &state);
 
         void CallMethod(u32 method, u32 argument);
     };

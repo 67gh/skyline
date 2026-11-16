@@ -3,14 +3,14 @@
 
 #pragma once
 
-#include <queue>
 #include <common.h>
 #include "syncpoint.h"
 #include "classes/class.h"
 
 namespace skyline::soc::host1x {
     /**
-     * @brief The 'Tegra Host Interface' or THI sits inbetween the Host1x and the class falcons, implementing syncpoint queueing and a method interface
+     * @note Device CallMethod executes synchronously; an OpDone method observes completion of all preceding work.
+     * @brief The 'Tegra Host Interface' or THI sits inbetween the Host1x and the class falcons, implementing completion signalling and a method interface
      */
     template<typename ClassType>
     class TegraHostInterface {
@@ -20,29 +20,9 @@ namespace skyline::soc::host1x {
 
         u32 storedMethod{}; //!< Method that will be used for deviceClass.CallMethod, set using Method0
 
-        std::queue<u32> incrQueue; //!< Queue of syncpoint IDs to be incremented when a device operation is finished, the same syncpoint may be held multiple times within the queue
-        std::mutex incrMutex;
-
-        void AddIncr(u32 syncpointId) {
-            std::scoped_lock lock(incrMutex);
-            incrQueue.push(syncpointId);
-        }
-
-        void SubmitPendingIncrs() {
-            std::scoped_lock lock(incrMutex);
-
-            while (!incrQueue.empty()) {
-                u32 syncpointId{incrQueue.front()};
-                incrQueue.pop();
-
-                Logger::Debug("Increment syncpoint: {}", syncpointId);
-                syncpoints.at(syncpointId).Increment();
-            }
-        }
-
       public:
-        TegraHostInterface(SyncpointSet &syncpoints)
-            : deviceClass([&] { SubmitPendingIncrs(); }),
+        TegraHostInterface(SyncpointSet &syncpoints, const DeviceState &state)
+            : deviceClass([] {}, state),
               syncpoints(syncpoints) {}
 
         void CallMethod(u32 method, u32 argument)  {
@@ -53,19 +33,20 @@ namespace skyline::soc::host1x {
                 case IncrementSyncpointMethodId: {
                     IncrementSyncpointMethod incrSyncpoint{.raw = argument};
 
+                    if (incrSyncpoint.index >= syncpoints.size())
+                        throw exception("Invalid THI syncpoint: {}", incrSyncpoint.index);
+
                     switch (incrSyncpoint.condition) {
                         case IncrementSyncpointMethod::Condition::Immediate:
                             Logger::Debug("Increment syncpoint: {}", incrSyncpoint.index);
                             syncpoints.at(incrSyncpoint.index).Increment();
                             break;
                         case IncrementSyncpointMethod::Condition::OpDone:
-                            Logger::Debug("Queue syncpoint for OpDone: {}", incrSyncpoint.index);
-                            AddIncr(incrSyncpoint.index);
-                            SubmitPendingIncrs(); // FIXME: immediately submit the incrs as classes are not yet implemented
+                            Logger::Debug("Synchronous OpDone syncpoint: {}", incrSyncpoint.index);
+                            syncpoints.at(incrSyncpoint.index).Increment(); // synchronous backend: all preceding writes are visible
                             break;
                         default:
-                            Logger::Warn("Unimplemented syncpoint condition: {}", static_cast<u8>(incrSyncpoint.condition));
-                            break;
+                            throw exception("Unsupported THI syncpoint condition: {}", static_cast<u8>(incrSyncpoint.condition));
                     }
                     break;
                 }
@@ -76,8 +57,7 @@ namespace skyline::soc::host1x {
                     deviceClass.CallMethod(storedMethod, argument);
                     break;
                 default:
-                    Logger::Error("Unknown THI method called: 0x{:X}, argument: 0x{:X}", method, argument);
-                    break;
+                    throw exception("Unknown THI method: 0x{:X}, argument: 0x{:X}", method, argument);
             }
         }
     };

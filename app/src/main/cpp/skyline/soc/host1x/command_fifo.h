@@ -5,6 +5,7 @@
 
 #include <common.h>
 #include <common/circular_queue.h>
+#include <vector>
 #include "syncpoint.h"
 #include "classes/class.h"
 #include "classes/host1x.h"
@@ -22,7 +23,8 @@ namespace skyline::soc::host1x {
         const DeviceState &state;
 
         static constexpr size_t GatherQueueSize{0x1000}; //!< Maximum size of the gather queue, this value is arbritary
-        CircularQueue<span<u32>> gatherQueue;
+        CircularQueue<span<u32>> gatherQueue; //!< Gathers pushed for asynchronous processing (not used by the synchronous video path)
+        ClassId targetClass{ClassId::Host1x}; //!< Persists across gathers on this channel
         std::thread thread; //!< The thread that manages processing of pushbuffers within gathers
         std::mutex threadStartMutex; //!< Protects the thread from being started multiple times
 
@@ -38,7 +40,7 @@ namespace skyline::soc::host1x {
         /**
          * @brief Processes the pushbuffer contained within the given gather, calling methods as needed
          */
-        void Process(span<u32> gather);
+
 
         /**
          * @brief Executes all pending gathers in the FIFO and polls for more
@@ -54,6 +56,11 @@ namespace skyline::soc::host1x {
          * @brief Starts the pushbuffer processing thread if it hasn't already been started
          */
         void Start();
+
+        // Synchronous path used by video ioctls; must not be mixed with Start/Push.
+        void Process(span<u32> gather);
+        void Validate(span<u32> gather);
+        void SetWaitTimeout(std::chrono::milliseconds timeout) { host1XClass.SetWaitTimeout(timeout); }
 
         /**
          * @brief Pushes a single gather into the FIFO to be processed asynchronously

@@ -132,6 +132,9 @@ add_subdirectory("libraries/audio-core")
 include_directories(SYSTEM "libraries/audio-core/include")
 target_link_libraries_system(audio_core Boost::intrusive Boost::container range-v3)
 
+# CPU video decoder (FFmpeg H.264/VP8 built from source) used by the NVDEC/VIC emulation, see cmake/VideoDecoder.cmake
+include("cmake/VideoDecoder.cmake")
+
 # Skyline
 add_library(skyline SHARED
         ${source_DIR}/driver_jni.cpp
@@ -207,6 +210,8 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/soc/host1x/classes/host1x.cpp
         ${source_DIR}/skyline/soc/host1x/classes/vic.cpp
         ${source_DIR}/skyline/soc/host1x/classes/nvdec.cpp
+        ${source_DIR}/skyline/soc/host1x/video/decoder.cpp
+        ${source_DIR}/skyline/soc/host1x/video/compositor.cpp
         ${source_DIR}/skyline/soc/gm20b/channel.cpp
         ${source_DIR}/skyline/soc/gm20b/gpfifo.cpp
         ${source_DIR}/skyline/soc/gm20b/gmmu.cpp
@@ -387,3 +392,7 @@ target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-
 
 target_link_libraries(skyline PRIVATE shader_recompiler audio_core)
 target_link_libraries_system(skyline android perfetto fmt lz4_static tzcode vkma mbedcrypto opus Boost::intrusive Boost::container range-v3 adrenotools tsl::robin_map)
+
+# FFmpeg (libavcodec/libavutil, static) for the NVDEC emulation
+add_dependencies(skyline skyline_video_ffmpeg)
+target_link_libraries(skyline PRIVATE skyline_avcodec skyline_avutil m)
