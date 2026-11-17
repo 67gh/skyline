@@ -4,6 +4,7 @@
 #pragma once
 
 #include <common.h>
+#include <soc/host1x/video/stats.h>
 #include <soc/host1x/video/decoder.h>
 
 namespace skyline::soc::host1x {
@@ -15,6 +16,7 @@ namespace skyline::soc::host1x {
         const DeviceState &state;
         video::Decoder engine;
         std::function<void()> opDoneCallback;
+        video::EngineStats stats{"NVDEC"};
 
       public:
         NvDecClass(std::function<void()> opDoneCallback, const DeviceState &state);

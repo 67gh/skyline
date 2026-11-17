@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR MPL-2.0
 // Copyright © 2021 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <atomic>
 #include <soc.h>
 #include <limits>
 #include <soc/host1x/command_parser.h>
@@ -22,42 +23,43 @@ namespace skyline::service::nvdrv::device::nvhost {
         return PosixResult::Success;
     }
 
-    PosixResult Host1xChannel::Submit(span<SubmitCmdBuf> cmdBufs,
+    #define REJECT(why) do { Logger::Warn("Host1x submit rejected: {}", why); return PosixResult::InvalidArgument; } while (false)
+PosixResult Host1xChannel::Submit(span<SubmitCmdBuf> cmdBufs,
                                       span<SubmitReloc> relocs, span<u32> relocShifts,
                                       span<SubmitSyncpointIncr> syncpointIncrs, span<u32> fenceThresholds) {
         Logger::Debug("numCmdBufs: {}, numRelocs: {}, numSyncpointIncrs: {}, numFenceThresholds: {}",
                             cmdBufs.size(), relocs.size(), syncpointIncrs.size(), fenceThresholds.size());
 
         if (fenceThresholds.size() > syncpointIncrs.size() || relocs.size() != relocShifts.size())
-            return PosixResult::InvalidArgument;
+            REJECT("fence thresholds or relocation shifts do not match the counts");
 
         std::scoped_lock lock(channelMutex);
         // Validate without modifying counters or output fences. A rejected submission
         // must not make an earlier/later job appear complete.
         for (const auto &incr : syncpointIncrs) {
             if (!core.syncpointManager.IsSyncpointAllocated(incr.syncpointId) || incr.numIncrs>0x7fffffffU)
-                return PosixResult::InvalidArgument;
+                REJECT("a syncpoint is not allocated or has too many increments");
         }
         for (const auto &cmdBuf : cmdBufs) {
             auto handleDesc{core.nvMap.GetHandle(cmdBuf.mem)};
             if (!handleDesc)
-                return PosixResult::InvalidArgument;
+                REJECT("a command buffer references an unknown nvmap handle");
             std::scoped_lock handleLock(handleDesc->mutex);
             if (!handleDesc->allocated || !handleDesc->address ||
                 (handleDesc->address & (alignof(u32) - 1)) || (cmdBuf.offset & (alignof(u32) - 1)) ||
                 cmdBuf.offset > handleDesc->size ||
                 static_cast<u64>(cmdBuf.words) > (handleDesc->size - cmdBuf.offset) / sizeof(u32))
-                return PosixResult::InvalidArgument;
+                REJECT("a command buffer handle is not allocated, misaligned or out of range");
             const u64 bytes{static_cast<u64>(cmdBuf.words) * sizeof(u32)};
             const u64 maxAddress{std::numeric_limits<u64>::max()};
             if (cmdBuf.offset > maxAddress - handleDesc->address ||
                 bytes > maxAddress - (handleDesc->address + cmdBuf.offset))
-                return PosixResult::InvalidArgument;
+                REJECT("a command buffer address overflows");
         }
 
         if (channelType!=core::ChannelType::NvDec && channelType!=core::ChannelType::VIC)
             return PosixResult::NotSupported;
-        if (executionFailed) return PosixResult::InvalidArgument;
+        if (executionFailed) REJECT("the channel was disabled by an earlier failure");
         if (cmdBufs.empty() && relocs.empty() && syncpointIncrs.empty()) return PosixResult::Success;
 
         // Copy first; relocations patch this owned copy, never application memory.
@@ -65,19 +67,19 @@ namespace skyline::service::nvdrv::device::nvhost {
         std::vector<u32> commands;
         std::vector<size_t> starts;
         for (const auto &cmd : cmdBufs) {
-            if (cmd.words > 4*1024*1024 - commands.size()) return PosixResult::InvalidArgument;
+            if (cmd.words > 4*1024*1024 - commands.size()) REJECT("the command buffers are too large");
             auto handle=core.nvMap.GetHandle(cmd.mem);
-            if (!handle) return PosixResult::InvalidArgument;
+            if (!handle) REJECT("a command buffer handle is unknown (copy step)");
             std::scoped_lock handleLock(handle->mutex);
             if (!handle->allocated || !handle->address || cmd.offset>handle->size ||
                 static_cast<u64>(cmd.words)>(handle->size-cmd.offset)/sizeof(u32))
-                return PosixResult::InvalidArgument;
+                REJECT("a command buffer handle is invalid (copy step)");
             starts.push_back(commands.size());
             const auto begin=commands.size();
             commands.resize(begin+cmd.words);
             if (cmd.words) std::memcpy(commands.data()+begin,reinterpret_cast<const void *>(handle->address+cmd.offset),cmd.words*sizeof(u32));
         }
-        if (commands.empty()) return PosixResult::InvalidArgument;
+        if (commands.empty()) REJECT("no commands to run");
         struct Pins {
             core::NvMap &map;
             std::vector<u32> handles;
@@ -88,23 +90,23 @@ namespace skyline::service::nvdrv::device::nvhost {
         for (size_t i=0;i<relocs.size();++i) {
             const auto &reloc=relocs[i];
             auto target=core.nvMap.GetHandle(reloc.pinMem);
-            if (!target || relocShifts[i]>31 || (reloc.patchOffset&3)) return PosixResult::InvalidArgument;
+            if (!target || relocShifts[i]>31 || (reloc.patchOffset&3)) REJECT("a relocation has an unknown target handle, a bad shift or a misaligned offset");
             std::scoped_lock targetLock(target->mutex);
-            if (!target->allocated || !target->address || reloc.pinOffset>=target->size) return PosixResult::InvalidArgument;
+            if (!target->allocated || !target->address || reloc.pinOffset>=target->size) REJECT("a relocation target is not allocated or its offset is out of range");
             bool found{};
             for (const auto &cmd : cmdBufs)
                 if (cmd.mem==reloc.patchMem && reloc.patchOffset>=cmd.offset &&
                     static_cast<u64>(reloc.patchOffset-cmd.offset)/4<cmd.words) found=true;
-            if (!found) return PosixResult::InvalidArgument;
+            if (!found) REJECT("a relocation does not patch any command buffer");
         }
         try {
             for (size_t i=0;i<relocs.size();++i) {
                 const auto &reloc=relocs[i];
                 const u64 base=core.nvMap.PinHandle(reloc.pinMem);
-                if (!base) return PosixResult::InvalidArgument;
+                if (!base) REJECT("a relocation target could not be pinned into the GPU address space");
                 pins.handles.push_back(reloc.pinMem);
                 const u64 address=base+reloc.pinOffset;
-                if (address>std::numeric_limits<u32>::max()) return PosixResult::InvalidArgument;
+                if (address>std::numeric_limits<u32>::max()) REJECT("a relocation target address does not fit in 32 bits");
                 for (size_t j=0;j<cmdBufs.size();++j) {
                     const auto &cmd=cmdBufs[j];
                     if (cmd.mem==reloc.patchMem && reloc.patchOffset>=cmd.offset &&
@@ -142,7 +144,11 @@ namespace skyline::service::nvdrv::device::nvhost {
             return PosixResult::InvalidArgument;
         }
         for (size_t i=0;i<fenceThresholds.size();++i) fenceThresholds[i]=thresholds[i];
+        static std::atomic<u32> submitCount{};
+        if (u32 count{submitCount++}; count < 8 || count % 100 == 0)
+            Logger::Info("Host1x video submit #{} succeeded: channel {}, {} command words, {} relocations", count, static_cast<u32>(channelType), commands.size(), relocs.size());
         return PosixResult::Success;
+    #undef REJECT
     }
 
     PosixResult Host1xChannel::GetSyncpoint(In<u32> channelSyncpointIdx, Out<u32> syncpointId) {
