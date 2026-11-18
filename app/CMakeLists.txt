@@ -386,6 +386,11 @@ add_library(skyline SHARED
         ${source_DIR}/skyline/services/mii/IDatabaseService.cpp
         ${source_DIR}/skyline/services/olsc/IOlscServiceForApplication.cpp
         )
+# The video engines run per-pixel loops on the CPU: keep them optimised even in debug builds (the rest of Skyline is built with -O0 there)
+set_source_files_properties(
+        ${source_DIR}/skyline/soc/host1x/video/decoder.cpp
+        ${source_DIR}/skyline/soc/host1x/video/compositor.cpp
+        PROPERTIES COMPILE_OPTIONS "-O2")
 target_include_directories(skyline PRIVATE ${source_DIR}/skyline)
 # target_precompile_headers(skyline PRIVATE ${source_DIR}/skyline/common.h) # PCH will currently break Intellisense
 target_compile_options(skyline PRIVATE -Wall -Wno-unknown-attributes -Wno-c++20-extensions -Wno-c++17-extensions -Wno-c99-designator -Wno-reorder -Wno-missing-braces -Wno-unused-variable -Wno-unused-private-field -Wno-dangling-else -Wconversion -fsigned-bitfields)

@@ -100,14 +100,15 @@ jobs:
             echo "SIGN_KEY_PASS=$KPASS"
           } >> "$GITHUB_ENV"
 
-      - name: Assemble ARM64 debug APK
+      # reldebug : optimisé (-O1) mais débogable ; le build debug compile tout Skyline en -O0, trop lent pour la vidéo et l'émulation
+      - name: Assemble ARM64 reldebug APK
         shell: bash
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleMainlineDebug --no-daemon --stacktrace --build-cache --max-workers=2 \
+          ./gradlew :app:assembleMainlineReldebug --no-daemon --stacktrace --build-cache --max-workers=2 \
             -Pandroid.injected.signing.store.file="$SIGN_STORE_FILE" \
             -Pandroid.injected.signing.store.password="$SIGN_STORE_PASS" \
             -Pandroid.injected.signing.key.alias="$SIGN_KEY_ALIAS" \
@@ -119,16 +120,16 @@ jobs:
           set -euo pipefail
           mkdir -p apk-artifact
           find app/build/outputs/apk -type f -name '*.apk' -print
-          apk="$(find app/build/outputs/apk/mainline/debug -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          apk="$(find app/build/outputs/apk/mainline/reldebug -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$apk" && test -s "$apk"
-          cp "$apk" apk-artifact/skyline-mainline-debug.apk
+          cp "$apk" apk-artifact/skyline-mainline-reldebug.apk
           git rev-parse HEAD > apk-artifact/release-commit.txt
 
       - name: Publish APK
         uses: actions/upload-artifact@v4
         with:
-          name: skyline-arm64-debug
-          path: apk-artifact/skyline-mainline-debug.apk
+          name: skyline-arm64-reldebug
+          path: apk-artifact/skyline-mainline-reldebug.apk
           if-no-files-found: error
           retention-days: 14
 
@@ -144,7 +145,7 @@ jobs:
           TAG="v$(date -u +%Y.%m.%d)-${GITHUB_SHA:0:12}"
           {
             echo "### Téléchargement"
-            echo "Télécharge **skyline-mainline-debug.apk** puis installe-le (ou laisse l'application proposer la mise à jour)."
+            echo "Télécharge **skyline-mainline-reldebug.apk** puis installe-le (ou laisse l'application proposer la mise à jour)."
             echo
             echo "### Derniers changements"
             git log -8 --pretty=format:'- %s (%h)'
@@ -153,7 +154,7 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --cleanup-tag --yes
           fi
-          gh release create "$TAG" apk-artifact/skyline-mainline-debug.apk \
+          gh release create "$TAG" apk-artifact/skyline-mainline-reldebug.apk \
             --target "$GITHUB_SHA" \
             --title "Skyline $TAG" \
             --notes-file release-notes.md \

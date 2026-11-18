@@ -2,6 +2,7 @@
 // VIC ABI and matrix semantics derived from Ryujinx (MIT), see THIRD_PARTY.md.
 #include "compositor.h"
 #include <memory>
+#include <cstdio>
 
 namespace skyline::soc::host1x::video {
 namespace {
@@ -82,9 +83,23 @@ void Compositor::Execute(const Memory &memory) {
             Bits(slot,171,3) || Bits(slot,175,8) || Bits(slot,183,2) || Bits(slot,186,1) ||
             Bits(slot.subspan(0x50,16),104,1))
             throw std::runtime_error("VIC: interlacing, enhancement, compression or luma-key unsupported");
-        // One opaque slot. Reject blending/overrides rather than silently drawing a wrong image.
-        if (U64(slot,0xa0)>>32 || U64(slot,0xa8))
-            throw std::runtime_error("VIC: blend factors/overrides unsupported");
+        // One opaque slot: only a plain copy of the slot over the background is implemented, anything else is rejected rather than drawn wrongly.
+        // NVIDIA's libraries describe that copy with K1 = 1.0, a source colour factor of K1 and a destination colour factor of zero, and a
+        // destination alpha factor of zero or -K1*srcAlpha (word 1 of the blend block is 0x2050 in Hollow Knight). All of them equal "replace" when K1 is 1023.
+        {
+            const auto blendWord1=static_cast<std::uint32_t>(U64(slot,0xa0)>>32);
+            const bool plainCopy=Bits(slot,1280,10)==1023 && (blendWord1&~0x7777U)==0 &&
+                Bits(slot,1312,3)==0 && Bits(slot,1316,3)==5 && Bits(slot,1320,3)==0 &&
+                (Bits(slot,1324,3)==2 || Bits(slot,1324,3)==3) && U64(slot,0xa8)==0;
+            // Blend words that were never programmed keep the behaviour this engine always had: the slot replaces the background
+            const bool unprogrammed=U64(slot,0xa0)==0 && U64(slot,0xa8)==0;
+            if (!plainCopy && !unprogrammed) {
+                char message[160];
+                std::snprintf(message,sizeof(message),"VIC: blend factors/overrides unsupported (k1=%u, words 0x%08x 0x%08x 0x%016llx)",
+                              static_cast<unsigned>(Bits(slot,1280,10)),static_cast<unsigned>(U64(slot,0xa0)),blendWord1,static_cast<unsigned long long>(U64(slot,0xa8)));
+                throw std::runtime_error(message);
+            }
+        }
         src=std::make_unique<Surface>(slot.subspan(0x40,16));
         const auto reg=0x100+static_cast<unsigned>(enabled)*24;
         in=memory.Read(std::uint64_t(regs[reg])<<8,src->y.Size());
@@ -143,6 +158,24 @@ void Compositor::Execute(const Memory &memory) {
     auto pixel=[&](unsigned x,unsigned y) {
         return sample(Bits(output,48,1)?dst.w-1-x:x,Bits(output,49,1)?dst.h-1-y:y);
     };
+    // Fast path for the most common video case: an NV12 surface copied 1:1 to an NV12 surface (no colour matrix, no scaling, no flip, no clamp).
+    // Every output byte is then exactly the matching source byte, so the per-pixel conversion below is skipped.
+    const bool nativeCopy=src && !dst.IsRgb() && !src->IsRgb() && src->format==dst.format &&
+        !Bits(bytes.subspan(0x30,32),127,1) && !Bits(slot.subspan(0x60,32),127,1) && !Bits(slot.subspan(0x80,32),127,1) &&
+        src->w==dst.w && src->h==dst.h && !(dst.w&1U) && !(dst.h&1U) && !Bits(output,48,1) && !Bits(output,49,1) &&
+        targetLeft==0 && targetTop==0 && targetRight+1==dst.w && targetBottom+1==dst.h &&
+        left==0 && top==0 && right+1==dst.w && bottom+1==dst.h &&
+        sx0==0 && sy0==0 && sx1==(std::uint64_t(dst.w-1)<<16) && sy1==(std::uint64_t(dst.h-1)<<16) &&
+        clampLow==0 && clampHigh>=1023;
+    if (nativeCopy) {
+        for (unsigned y=0;y<dst.h;++y) for (unsigned x=0;x<dst.w;++x)
+            out[dst.y.Offset(x,y)]=in[src->y.Offset(x,y)];
+        for (unsigned y=0;y<dst.h/2;++y) for (unsigned x=0;x<dst.w;++x)
+            outChroma[dst.uv.Offset(x,y)]=inChroma[src->uv.Offset(x,y)];
+        memory.Write(outY,out);
+        memory.Write(outUV,outChroma);
+        return;
+    }
     // TargetRect clips the output writes, not the source-to-destination scale.
     // Pixels outside it (and padding) must retain their previous bytes.
     for (unsigned y=targetTop;y<=targetBottom;++y) for (unsigned x=targetLeft;x<=targetRight;++x) {
