@@ -103,13 +103,18 @@ void Decoder::Execute(const Memory &memory) {
         throw std::runtime_error("NVDEC: decoded surface is corrupt or has an unexpected format/size");
     Bytes y(yPlane.Size()),uv(uvPlane.Size());
     for (unsigned row=0;row<height;++row)
-        for (unsigned x=0;x<width;++x)
-            y[yPlane.Offset(x,row)]=frame->data[0][static_cast<std::ptrdiff_t>(row)*frame->linesize[0]+x];
-    for (unsigned row=0;row<(height+1)/2;++row)
-        for (unsigned x=0;x<(width+1)/2;++x) {
-            uv[uvPlane.Offset(2*x,row)]=frame->data[1][static_cast<std::ptrdiff_t>(row)*frame->linesize[1]+x];
-            uv[uvPlane.Offset(2*x+1,row)]=frame->data[2][static_cast<std::ptrdiff_t>(row)*frame->linesize[2]+x];
+        WriteRow(yPlane,y.data(),row,frame->data[0]+static_cast<std::ptrdiff_t>(row)*frame->linesize[0],width);
+    const unsigned chromaWidth=(width+1)/2;
+    Bytes interleaved(static_cast<std::size_t>(chromaWidth)*2);
+    for (unsigned row=0;row<(height+1)/2;++row) {
+        const auto *u=frame->data[1]+static_cast<std::ptrdiff_t>(row)*frame->linesize[1];
+        const auto *v=frame->data[2]+static_cast<std::ptrdiff_t>(row)*frame->linesize[2];
+        for (unsigned x=0;x<chromaWidth;++x) {
+            interleaved[2U*x]=u[x];
+            interleaved[2U*x+1U]=v[x];
         }
+        WriteRow(uvPlane,uv.data(),row,interleaved.data(),chromaWidth*2U);
+    }
     memory.Write(yAddress,y); memory.Write(uvAddress,uv);
     if (statusAddress) {
         Bytes status(56);

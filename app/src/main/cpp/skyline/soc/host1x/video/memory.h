@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <span>
 #include <stdexcept>
@@ -72,4 +73,29 @@ struct Plane {
                ((x%32)/16)*32 + (y%2)*16 + x%16;
     }
 };
+
+/**
+ * Copies a width x height byte rectangle from one plane layout to another. A run of 16 bytes that starts at a multiple of 16 is contiguous in both the
+ * pitch-linear and the block-linear layout, so it is copied at once: computing an offset for every byte made this the slowest part of a video frame.
+ */
+inline void CopyPlane(const Plane &dstPlane, std::uint8_t *dst, const Plane &srcPlane, const std::uint8_t *src, unsigned width, unsigned height) {
+    for (unsigned y=0;y<height;++y) {
+        unsigned x=0;
+        for (;x+16U<=width;x+=16U)
+            std::memcpy(dst+dstPlane.Offset(x,y),src+srcPlane.Offset(x,y),16);
+        for (;x<width;++x)
+            dst[dstPlane.Offset(x,y)]=src[srcPlane.Offset(x,y)];
+    }
+}
+
+/**
+ * Writes one row of `count` bytes taken from a linear buffer to row `y` of a plane, in runs of 16 bytes (see CopyPlane)
+ */
+inline void WriteRow(const Plane &plane, std::uint8_t *dst, unsigned y, const std::uint8_t *row, unsigned count) {
+    unsigned x=0;
+    for (;x+16U<=count;x+=16U)
+        std::memcpy(dst+plane.Offset(x,y),row+x,16);
+    for (;x<count;++x)
+        dst[plane.Offset(x,y)]=row[x];
+}
 }

@@ -168,10 +168,8 @@ void Compositor::Execute(const Memory &memory) {
         sx0==0 && sy0==0 && sx1==(std::uint64_t(dst.w-1)<<16) && sy1==(std::uint64_t(dst.h-1)<<16) &&
         clampLow==0 && clampHigh>=1023;
     if (nativeCopy) {
-        for (unsigned y=0;y<dst.h;++y) for (unsigned x=0;x<dst.w;++x)
-            out[dst.y.Offset(x,y)]=in[src->y.Offset(x,y)];
-        for (unsigned y=0;y<dst.h/2;++y) for (unsigned x=0;x<dst.w;++x)
-            outChroma[dst.uv.Offset(x,y)]=inChroma[src->uv.Offset(x,y)];
+        CopyPlane(dst.y,out.data(),src->y,in.data(),dst.w,dst.h);
+        CopyPlane(dst.uv,outChroma.data(),src->uv,inChroma.data(),dst.w,dst.h/2);
         memory.Write(outY,out);
         memory.Write(outUV,outChroma);
         return;
