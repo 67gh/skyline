@@ -18,6 +18,7 @@ namespace skyline::kernel::type {
         KTransferMemory(const DeviceState &state, u8 *ptr, size_t size, memory::Permission permission, memory::MemoryState memState = memory::states::TransferMemory)
             : KSharedMemory(state, size, memState, KType::KTransferMemory) {
             std::memcpy(host.data(), ptr, size);
+            RememberOriginalChunk(ptr);
             Map(span<u8>{ptr, size}, permission);
         }
     };

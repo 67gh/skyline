@@ -14,6 +14,14 @@ namespace skyline::kernel::type {
         int fd; //!< A file descriptor to the underlying shared memory
         memory::MemoryState memoryState; //!< The state of the memory as supplied initially, this is retained for any mappings
 
+      protected:
+        std::optional<ChunkDescriptor> originalChunk; //!< What a KTransferMemory replaced (e.g. the guest heap), it is put back when the transfer memory is destroyed
+
+        /**
+         * @brief Remembers the memory chunk that contains 'ptr' so that it can be restored once the transfer memory built on top of it is destroyed
+         */
+        void RememberOriginalChunk(u8 *ptr);
+
       public:
         span<u8> host; //!< We also keep a host mirror of the underlying shared memory for host access, it is persistently mapped and should be used by anything accessing the memory on the host
 

@@ -22,6 +22,10 @@ namespace skyline::kernel::type {
         host = span<u8>{hostPtr, size};
     }
 
+    void KSharedMemory::RememberOriginalChunk(u8 *ptr) {
+        originalChunk = state.process->memory.Get(ptr);
+    }
+
     u8 *KSharedMemory::Map(span<u8> map, memory::Permission permission) {
         if (!state.process->memory.AddressSpaceContains(map))
             throw exception("KPrivateMemory allocation isn't inside guest address space: 0x{:X} - 0x{:X}", map.data(), map.end().base());
@@ -113,7 +117,7 @@ namespace skyline::kernel::type {
                     Logger::Warn("Expected host mapping of transfer memory to be valid during KTransferMemory destruction");
                 guest.copy_from(host);
 
-                state.process->memory.InsertChunk(ChunkDescriptor{
+                ChunkDescriptor restored{
                     .ptr = guest.data(),
                     .size = guest.size(),
                     .permission = UnborrowPermission,
@@ -122,7 +126,20 @@ namespace skyline::kernel::type {
                         .isBorrowed = false,
                     },
                     .memory = this
-                });
+                };
+
+                if (originalChunk) {
+                    // Give the region back to what it was before it was lent as transfer memory (normally the guest heap): leaving it in the transfer memory state
+                    // makes every later svcMapMemory on it fail (a game was seen aborting after its audio renderer released such a buffer), and the chunk would also
+                    // point at this object after it is gone
+                    restored.permission = originalChunk->permission;
+                    restored.state = originalChunk->state;
+                    restored.attributes = originalChunk->attributes;
+                    restored.attributes.isBorrowed = false;
+                    restored.memory = originalChunk->memory;
+                }
+
+                state.process->memory.InsertChunk(restored);
             }
         }
 

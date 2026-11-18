@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <chrono>
 #include <fstream>
 #include <os.h>
 #include <kernel/types/KProcess.h>
@@ -234,6 +235,9 @@ namespace skyline::service {
         Logger::Verbose("----IPC Start----");
         Logger::Verbose("Handle is 0x{:X}", handle);
 
+        const auto ipcStart{std::chrono::steady_clock::now()};
+        BaseService *ipcService{}; //!< The service that handled this request, used to name slow requests in the log
+
         if (session->isOpen) {
             ipc::IpcRequest request(session->isDomain, state);
             ipc::IpcResponse response(state);
@@ -248,6 +252,7 @@ namespace skyline::service {
                                 throw exception("Domain request used an expired handle");
                             switch (request.domain->command) {
                                 case ipc::DomainCommand::SendMessage:
+                                    ipcService = service.get();
                                     response.errorCode = service->HandleRequest(*session, request, response);
                                     break;
 
@@ -262,6 +267,7 @@ namespace skyline::service {
                             throw exception("Invalid object ID was used with domain request");
                         }
                     } else {
+                        ipcService = session->serviceObject.get();
                         response.errorCode = session->serviceObject->HandleRequest(*session, request, response);
                     }
                     response.WriteResponse(session->isDomain);
@@ -304,6 +310,10 @@ namespace skyline::service {
                         throw exception("Unimplemented IPC message type: {}", static_cast<u16>(request.header->type));
                     }
             }
+
+            // A request that blocks the calling guest thread for long is a common cause of a game that seems to hang or start late
+            if (const auto elapsedMs{std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - ipcStart).count()}; ipcService && elapsedMs >= 200)
+                Logger::Info("Slow IPC: \"{}\" command 0x{:X} took {} ms", ipcService->GetName(), request.payload ? request.payload->value : 0U, elapsedMs);
         } else {
             Logger::Warn("svcSendSyncRequest called on closed handle: 0x{:X}", handle);
         }
