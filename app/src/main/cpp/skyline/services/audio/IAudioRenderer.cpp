@@ -5,8 +5,13 @@
 #include <audio.h>
 #include <kernel/types/KProcess.h>
 #include "IAudioRenderer.h"
+#include "audio_stats.h"
 
 namespace skyline::service::audio {
+    namespace {
+        RateStats updateStats; //!< Audio renderer updates requested by the game, with the time each took
+    }
+
     IAudioRenderer::IAudioRenderer(const DeviceState &state, ServiceManager &manager,
                                    AudioCore::AudioRenderer::Manager &rendererManager,
                                    const AudioCore::AudioRendererParameterInternal &params,
@@ -18,6 +23,7 @@ namespace skyline::service::audio {
           transferMemoryWrapper{transferMemorySize},
           impl{state.audio->audioSystem, rendererManager, &renderedEventWrapper} {
         impl.Initialize(params, &transferMemoryWrapper, transferMemorySize, processHandle, appletResourceUserId, sessionId);
+        Logger::Info("Audio renderer opened: {} Hz, {} samples per update, {} mix buffers, rendering time limit {}%, execution mode {}", impl.GetSystem().GetSampleRate(), impl.GetSystem().GetSampleCount(), impl.GetSystem().GetMixBufferCount(), impl.GetSystem().GetRenderingTimeLimit(), static_cast<u32>(impl.GetSystem().GetExecutionMode()));
     }
 
     IAudioRenderer::~IAudioRenderer() {
@@ -49,7 +55,13 @@ namespace skyline::service::audio {
         auto output{request.outputBuf.at(0)};
         auto performanceOutput{request.outputBuf.size() > 1 ? request.outputBuf.at(1) : span<u8>{}};
 
-        if (auto result{impl.RequestUpdate(input, performanceOutput, output)}; result.IsError()) {
+        const auto start{std::chrono::steady_clock::now()};
+        auto result{impl.RequestUpdate(input, performanceOutput, output)};
+        const auto micros{static_cast<u64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count())};
+        if (const auto summary{updateStats.Record(1, micros)})
+            Logger::Info("Audio renderer: {} updates in {:.1f}s ({:.0f}/s), average {} us, longest {} us", summary->calls, summary->seconds, static_cast<double>(summary->calls) / summary->seconds, summary->totalMicros / summary->calls, summary->maxMicros);
+
+        if (result.IsError()) {
             Logger::Error("Update failed error: 0x{:X}", u32{result});
             return Result{result};
         }

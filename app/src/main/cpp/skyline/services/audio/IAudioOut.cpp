@@ -5,8 +5,14 @@
 #include <audio.h>
 #include <kernel/types/KProcess.h>
 #include "IAudioOut.h"
+#include "audio_stats.h"
 
 namespace skyline::service::audio {
+    namespace {
+        RateStats appendStats; //!< Buffers the game appends to the audio output
+        RateStats releaseStats; //!< Buffers the game collects back once they were played
+    }
+
     IAudioOut::IAudioOut(const DeviceState &state, ServiceManager &manager, size_t sessionId,
                          std::string_view deviceName, AudioCore::AudioOut::AudioOutParameter parameters,
                          KHandle handle, u32 appletResourceUserId)
@@ -41,7 +47,10 @@ namespace skyline::service::audio {
         const auto &buffer{request.inputBuf.at(0).as<AudioCore::AudioOut::AudioOutBuffer>()};
         auto tag{request.Pop<u64>()};
 
-        return Result{impl->AppendBuffer(buffer, tag)};
+        auto result{impl->AppendBuffer(buffer, tag)};
+        if (const auto summary{appendStats.Record(1, 0)})
+            Logger::Info("AudioOut: {} buffers appended in {:.1f}s ({:.0f}/s), {} queued, {} samples played so far", summary->calls, summary->seconds, static_cast<double>(summary->calls) / summary->seconds, impl->GetBufferCount(), impl->GetPlayedSampleCount());
+        return Result{result};
     }
 
     Result IAudioOut::RegisterBufferEvent(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
@@ -58,6 +67,8 @@ namespace skyline::service::audio {
         auto count{impl->GetReleasedBuffers(releasedBuffers)};
 
         request.outputBuf.at(0).copy_from(releasedBuffers);
+        if (const auto summary{releaseStats.Record(count, 0)})
+            Logger::Info("AudioOut: {} buffers released in {:.1f}s over {} polls", summary->amount, summary->seconds, summary->calls);
         response.Push<u32>(count);
         return {};
     }
