@@ -10,6 +10,7 @@
 namespace skyline::service::audio {
     namespace {
         RateStats updateStats; //!< Audio renderer updates requested by the game, with the time each took
+        RateStats signalStats; //!< Times the renderer signalled its "rendered" event, which the game waits on before its next update
     }
 
     IAudioRenderer::IAudioRenderer(const DeviceState &state, ServiceManager &manager,
@@ -18,7 +19,11 @@ namespace skyline::service::audio {
                                    u64 transferMemorySize, u32 processHandle, u64 appletResourceUserId, i32 sessionId)
         : BaseService{state, manager},
           renderedEvent{std::make_shared<type::KEvent>(state, true)},
-          renderedEventWrapper{[renderedEvent = this->renderedEvent]() { renderedEvent->Signal(); },
+          renderedEventWrapper{[renderedEvent = this->renderedEvent]() {
+                                   renderedEvent->Signal();
+                                   if (const auto summary{signalStats.Record(1, 0)})
+                                       Logger::Info("Audio renderer: event signalled {} times in {:.1f}s ({:.0f}/s)", summary->calls, summary->seconds, static_cast<double>(summary->calls) / summary->seconds);
+                               },
                               [renderedEvent = this->renderedEvent]() { renderedEvent->ResetSignal(); }},
           transferMemoryWrapper{transferMemorySize},
           impl{state.audio->audioSystem, rendererManager, &renderedEventWrapper} {
