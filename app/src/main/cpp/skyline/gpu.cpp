@@ -2,6 +2,7 @@
 // Copyright © 2021 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
 #include <dlfcn.h>
+#include <sys/mman.h>
 #include <adrenotools/driver.h>
 #include <os.h>
 #include <jvm.h>
@@ -406,6 +407,30 @@ namespace skyline::gpu {
           debugTracingBuffer(memory.AllocateBuffer(DebugTracingBufferSize)) {}
 
     void GPU::Initialise() {
+        // Direct memory import relies on adrenotools hooks that are not present in every driver (custom Turnip builds can pass the initial check but then
+        // fail "Failed to validate GPU mapping" on the first guest buffer, which kills the game with a black screen). Try one small import now and, if it
+        // doesn't work, fall back to staged buffers for the whole session instead of crashing later.
+        if (*state.settings->useDirectMemoryImport) {
+            bool importWorks{};
+            if (traits.supportsAdrenoDirectMemoryImport) {
+                constexpr size_t ProbeSize{0x10000};
+                void *probe{mmap(nullptr, ProbeSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)};
+                if (probe != MAP_FAILED) {
+                    try {
+                        [[maybe_unused]] auto imported{memory.ImportBuffer(span<u8>{static_cast<u8 *>(probe), ProbeSize})};
+                        importWorks = true;
+                    } catch (const std::exception &e) {
+                        Logger::Warn("Direct memory import probe failed: {}", e.what());
+                    }
+                    munmap(probe, ProbeSize);
+                }
+            }
+            if (!importWorks) {
+                Logger::Warn("Direct memory import is not usable with this driver, falling back to staged buffers");
+                state.settings->useDirectMemoryImport = false;
+            }
+        }
+
         std::string titleId{state.loader->nacp->GetSaveDataOwnerId()};
         graphicsPipelineAssembler.emplace(*this, state.os->publicAppFilesPath + "vk_graphics_pipeline_cache/" + titleId);
         shader.emplace(state, *this,
