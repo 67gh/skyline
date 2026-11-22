@@ -305,7 +305,9 @@ namespace skyline::kernel {
         for (const auto &chunk : chunks)
             if (chunk.state == memory::states::Heap)
                 size += chunk.size;
-        return size + code.size() + state.process->mainThreadStack->guest.size();
+        // The main thread stack is only created once the process starts, this can be queried earlier (eg. by the performance overlay while the executables are still loading)
+        auto mainThreadStack{state.process->mainThreadStack};
+        return size + code.size() + (mainThreadStack ? mainThreadStack->guest.size() : 0);
     }
 
     size_t MemoryManager::GetSystemResourceUsage() {
