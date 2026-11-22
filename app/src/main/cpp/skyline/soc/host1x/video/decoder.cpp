@@ -3,6 +3,8 @@
 #include "h264.h"
 #include <cstring>
 #include <string>
+#include <thread>
+#include <algorithm>
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/error.h>
@@ -32,10 +34,14 @@ struct Decoder::Impl {
         if (!decoder) throw std::runtime_error("NVDEC: decoder missing from bundled FFmpeg");
         context=avcodec_alloc_context3(decoder);
         if (!context) throw std::bad_alloc();
-        context->thread_count=1; // One submitted picture must finish before signalling OpDone.
-        context->thread_type=0;
+        // Slice threading splits the work of ONE picture over several cores and still returns it before avcodec_send_packet() returns, so OpDone
+        // can be signalled right after, unlike frame threading which would delay output. This shortens each decode on slow SoCs (cutscene stutter).
+        context->thread_count=std::clamp<int>(static_cast<int>(std::thread::hardware_concurrency()),1,4);
+        context->thread_type=FF_THREAD_SLICE;
         context->flags |= AV_CODEC_FLAG_LOW_DELAY;
-        context->err_recognition=AV_EF_EXPLODE;
+        // Do not abort on minor bitstream errors (AV_EF_EXPLODE dropped whole pictures and froze/jerked the video), let FFmpeg conceal them
+        context->err_recognition=0;
+        context->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;
         context->max_pixels=4096LL*4096;
         CheckCodec(avcodec_open2(context,decoder,nullptr),"open");
         codec=id; width=w; height=h;
@@ -98,9 +104,9 @@ void Decoder::Execute(const Memory &memory) {
     CheckCodec(avcodec_send_packet(impl->context,impl->packet),"send picture");
     CheckCodec(avcodec_receive_frame(impl->context,impl->frame),"receive picture");
     const auto *frame=impl->frame;
-    if (frame->format!=AV_PIX_FMT_YUV420P || frame->width!=static_cast<int>(width) || frame->height!=static_cast<int>(height) ||
-        (frame->flags & AV_FRAME_FLAG_CORRUPT) || frame->decode_error_flags)
-        throw std::runtime_error("NVDEC: decoded surface is corrupt or has an unexpected format/size");
+    // A slightly damaged picture is still displayed (a repeated old frame is far more visible than a small artefact), only a wrong layout is fatal
+    if (frame->format!=AV_PIX_FMT_YUV420P || frame->width!=static_cast<int>(width) || frame->height!=static_cast<int>(height))
+        throw std::runtime_error("NVDEC: decoded surface has an unexpected format/size");
     Bytes y(yPlane.Size()),uv(uvPlane.Size());
     for (unsigned row=0;row<height;++row)
         WriteRow(yPlane,y.data(),row,frame->data[0]+static_cast<std::ptrdiff_t>(row)*frame->linesize[0],width);
