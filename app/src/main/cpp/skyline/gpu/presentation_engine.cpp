@@ -14,6 +14,7 @@
 #include "native_window.h"
 #include "texture/format.h"
 
+extern std::atomic<skyline::u64> PresentedFrames;
 extern jint Fps;
 extern jfloat AverageFrametimeMs;
 extern jfloat AverageFrametimeDeviationMs;
@@ -201,6 +202,7 @@ namespace skyline::gpu {
                 .pWaitSemaphores = &*presentSemaphore,
             }); // We don't care about suboptimal images as they are caused by not respecting the transform hint, we handle transformations externally
         }
+        PresentedFrames.fetch_add(1, std::memory_order_relaxed);
 
         timestamp = (timestamp && !*state.settings->disableFrameThrottling) ? timestamp : getMonotonicNsNow(); // We tie FPS to the submission time rather than presentation timestamp, if we don't have the presentation timestamp available or if frame throttling is disabled as we want the maximum measured FPS to not be restricted to the refresh rate
         if (frameTimestamp) {

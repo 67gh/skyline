@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright © 2020 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <atomic>
 #include <csignal>
 #include <pthread.h>
 #include <android/asset_manager_jni.h>
@@ -19,6 +20,7 @@
 #include "skyline/input.h"
 #include "skyline/kernel/types/KProcess.h"
 
+std::atomic<skyline::u64> PresentedFrames{}; //!< The total amount of frames presented since the emulation started, used by the stall watchdog
 jint Fps; //!< An approximation of the amount of frames being submitted every second
 jfloat AverageFrametimeMs; //!< The average time it takes for a frame to be rendered and presented in milliseconds
 jfloat AverageFrametimeDeviationMs; //!< The average deviation of the average frametimes in milliseconds
@@ -79,6 +81,7 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
 ) {
     skyline::signal::ScopedStackBlocker stackBlocker; // We do not want anything to unwind past JNI code as there are invalid stack frames which can lead to a segmentation fault
     Fps = 0;
+    PresentedFrames = 0;
     AverageFrametimeMs = AverageFrametimeDeviationMs = 0.0f;
 
     pthread_setname_np(pthread_self(), "EmuMain");

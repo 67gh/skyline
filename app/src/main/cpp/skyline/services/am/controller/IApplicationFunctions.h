@@ -40,6 +40,13 @@ namespace skyline::service::am {
         Result EnsureSaveData(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
 
         /**
+         * @brief Ensures that the application's cache storage exists, returns where it was created
+         * @note The cache storage is always reported as existing on the SD card, the filesystem service creates the directories on demand
+         * @url https://switchbrew.org/wiki/Applet_Manager_services#CreateCacheStorage
+         */
+        Result CreateCacheStorage(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
+
+        /**
          * @brief Sets a termination result for the application
          * @url https://switchbrew.org/wiki/Applet_Manager_services#SetTerminateResult
          */
@@ -147,6 +154,7 @@ namespace skyline::service::am {
             SFUNC(0x16, IApplicationFunctions, SetTerminateResult),
             SFUNC(0x17, IApplicationFunctions, GetDisplayVersion),
             SFUNC(0x1A, IApplicationFunctions, GetSaveDataSize),
+            SFUNC(0x1B, IApplicationFunctions, CreateCacheStorage),
             SFUNC(0x28, IApplicationFunctions, NotifyRunning),
             SFUNC(0x32, IApplicationFunctions, GetPseudoDeviceId),
             SFUNC(0x42, IApplicationFunctions, InitializeGamePlayRecording),

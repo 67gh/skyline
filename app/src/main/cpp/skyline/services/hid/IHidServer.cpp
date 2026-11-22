@@ -97,6 +97,11 @@ namespace skyline::service::hid {
         return {};
     }
 
+    Result IHidServer::DisconnectNpad(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        Logger::Debug("Npad {} disconnect requested, ignored", static_cast<u32>(request.Pop<NpadId>()));
+        return {};
+    }
+
     Result IHidServer::DeactivateNpad(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         state.input->npad.Deactivate();
         return {};

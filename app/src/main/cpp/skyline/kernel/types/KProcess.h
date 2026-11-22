@@ -81,6 +81,11 @@ namespace skyline {
             void Kill(bool join, bool all = false, bool disableCreation = false);
 
             /**
+             * @brief Logs the scheduling state of every guest thread (diagnostics for frozen games), nothing is logged if the thread list is being modified
+             */
+            void LogThreadStates();
+
+            /**
              * @brief This initializes the process heap and TLS Error Context slot pointer, it should be called prior to creating the first thread
              * @note This requires VMM regions to be initialized, it will map heap at an arbitrary location otherwise
              */

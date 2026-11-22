@@ -25,6 +25,20 @@ namespace skyline::kernel::type {
             thread->Kill(true);
     }
 
+    void KProcess::LogThreadStates() {
+        std::unique_lock lock{threadMutex, std::try_to_lock};
+        if (!lock) {
+            Logger::Info("Watchdog: thread list is locked, skipping thread states");
+            return;
+        }
+
+        for (const auto &thread : threads) {
+            if (!thread)
+                continue;
+            Logger::Info("Watchdog: T{} priority {} (base {}) core {} running {} ready {} paused {} killed {} waiting on mutex {}", thread->id, static_cast<int>(thread->priority.load()), static_cast<int>(thread->basePriority.load()), static_cast<int>(thread->coreId), thread->running, thread->ready, thread->isPaused, thread->killed, static_cast<void *>(thread->waitMutex));
+        }
+    }
+
     void KProcess::Kill(bool join, bool all, bool disableCreation) {
         Logger::Warn("Killing {}{}KProcess{}", join ? "and joining " : "", all ? "all threads in " : "HOS-0 in ", disableCreation ? " with new thread creation disabled" : "");
         Logger::EmulationContext.Flush();

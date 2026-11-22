@@ -12,6 +12,7 @@
 #include "loader/nsp.h"
 #include "loader/xci.h"
 #include "os.h"
+#include "stall_watchdog.h"
 
 namespace skyline::kernel {
     OS::OS(
@@ -66,6 +67,8 @@ namespace skyline::kernel {
                 publisher = nacp->GetApplicationPublisher(nacp->GetFirstSupportedTitleLanguage());
             Logger::InfoNoPrefix(R"(Starting "{}" ({}) v{} by "{}")", name, nacp->GetSaveDataOwnerId(), nacp->GetApplicationVersion(), publisher);
         }
+
+        StallWatchdog stallWatchdog{state}; // Reports a frozen game (no frame presented), it is joined when this function returns
 
         process->InitializeHeapTls();
         auto thread{process->CreateThread(entry)};
