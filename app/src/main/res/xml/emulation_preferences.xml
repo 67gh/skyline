@@ -44,6 +44,31 @@
             app:title="@string/perf_stats" />
         <SwitchPreferenceCompat
             android:defaultValue="false"
+            app:dependency="perf_stats"
+            app:key="perf_stats_app_ram"
+            app:title="@string/perf_stats_app_ram" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            app:dependency="perf_stats"
+            app:key="perf_stats_game_ram"
+            app:title="@string/perf_stats_game_ram" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            app:dependency="perf_stats"
+            app:key="perf_stats_available_ram"
+            app:title="@string/perf_stats_available_ram" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            app:dependency="perf_stats"
+            app:key="perf_stats_cpu"
+            app:title="@string/perf_stats_cpu" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            app:dependency="perf_stats"
+            app:key="perf_stats_gpu"
+            app:title="@string/perf_stats_gpu" />
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
             android:summaryOff="@string/max_refresh_rate_disabled"
             android:summaryOn="@string/max_refresh_rate_enabled"
             app:key="max_refresh_rate"

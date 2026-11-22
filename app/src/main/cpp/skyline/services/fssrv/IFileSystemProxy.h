@@ -107,6 +107,24 @@ namespace skyline::service::fssrv {
           * @brief Returns the filesystem log access mode
           * @url https://switchbrew.org/wiki/Filesystem_services#GetGlobalAccessLogMode
           */
+        /**
+         * @url https://switchbrew.org/wiki/Filesystem_services#OpenSaveDataInfoReader
+         * @brief Always returns a reader reporting no save data entries
+         */
+        Result OpenSaveDataInfoReader(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
+
+        /**
+         * @url https://switchbrew.org/wiki/Filesystem_services#OpenSaveDataInfoReaderBySaveDataSpaceId
+         * @brief Always returns a reader reporting no save data entries
+         */
+        Result OpenSaveDataInfoReaderBySaveDataSpaceId(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
+
+        /**
+         * @url https://switchbrew.org/wiki/Filesystem_services#OpenSaveDataInfoReaderOnlyCacheStorage
+         * @brief Used by nn::fs::OpenCacheStorageList, always returns an empty list of cache storages
+         */
+        Result OpenSaveDataInfoReaderOnlyCacheStorage(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
+
         Result GetGlobalAccessLogMode(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response);
 
         /**
@@ -120,6 +138,9 @@ namespace skyline::service::fssrv {
             SFUNC(0x22, IFileSystemProxy, GetCacheStorageSize),
             SFUNC(0x33, IFileSystemProxy, OpenSaveDataFileSystem),
             SFUNC(0x35, IFileSystemProxy, OpenReadOnlySaveDataFileSystem),
+            SFUNC(0x3C, IFileSystemProxy, OpenSaveDataInfoReader),
+            SFUNC(0x3D, IFileSystemProxy, OpenSaveDataInfoReaderBySaveDataSpaceId),
+            SFUNC(0x3E, IFileSystemProxy, OpenSaveDataInfoReaderOnlyCacheStorage),
             SFUNC(0xC8, IFileSystemProxy, OpenDataStorageByCurrentProcess),
             SFUNC(0xCA, IFileSystemProxy, OpenDataStorageByDataId),
             SFUNC(0xCB, IFileSystemProxy, OpenPatchDataStorageByCurrentProcess),

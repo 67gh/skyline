@@ -188,6 +188,17 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_updatePerformanceSt
     if (!averageFrametimeDeviationField)
         averageFrametimeDeviationField = env->GetFieldID(clazz, "averageFrametimeDeviation", "F");
     env->SetFloatField(thiz, averageFrametimeDeviationField, AverageFrametimeDeviationMs);
+
+    // Memory currently committed by the guest process (heap, code and main thread stack), 0 while no process is running
+    jlong gameMemoryBytes{};
+    if (auto os{OsWeak.lock()})
+        if (os->state.process)
+            gameMemoryBytes = static_cast<jlong>(os->state.process->memory.GetUserMemoryUsage());
+
+    static jfieldID gameMemoryBytesField{};
+    if (!gameMemoryBytesField)
+        gameMemoryBytesField = env->GetFieldID(clazz, "gameMemoryBytes", "J");
+    env->SetLongField(thiz, gameMemoryBytesField, gameMemoryBytes);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_emu_skyline_input_InputHandler_00024Companion_setController(JNIEnv *, jobject, jint index, jint type, jint partnerIndex) {

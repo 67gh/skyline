@@ -83,6 +83,11 @@
     <string name="perf_stats">Show Performance Statistics</string>
     <string name="perf_stats_desc_off">Performance Statistics will not be shown</string>
     <string name="perf_stats_desc_on">Performance Statistics will be shown in the top-left corner</string>
+    <string name="perf_stats_app_ram">Show app RAM usage</string>
+    <string name="perf_stats_game_ram">Show game RAM usage</string>
+    <string name="perf_stats_available_ram">Show available RAM</string>
+    <string name="perf_stats_cpu">Show CPU usage</string>
+    <string name="perf_stats_gpu">Show GPU usage (if supported by the device)</string>
     <string name="max_refresh_rate">Use Maximum Display Refresh Rate</string>
     <string name="max_refresh_rate_enabled">Sets the display refresh rate as high as possible (Will break most games)</string>
     <string name="max_refresh_rate_disabled">Sets the display refresh rate to 60Hz</string>

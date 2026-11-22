@@ -35,6 +35,11 @@ class EmulationSettings private constructor(context : Context, prefName : String
 
     // Display
     var perfStats by sharedPreferences(context, false, prefName = prefName)
+    var perfStatsAppRam by sharedPreferences(context, false, prefName = prefName)
+    var perfStatsGameRam by sharedPreferences(context, false, prefName = prefName)
+    var perfStatsAvailableRam by sharedPreferences(context, false, prefName = prefName)
+    var perfStatsCpu by sharedPreferences(context, false, prefName = prefName)
+    var perfStatsGpu by sharedPreferences(context, false, prefName = prefName)
     var maxRefreshRate by sharedPreferences(context, false, prefName = prefName)
     var orientation by sharedPreferences(context, ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, prefName = prefName)
     var aspectRatio by sharedPreferences(context, 0, prefName = prefName)

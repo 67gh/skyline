@@ -44,6 +44,7 @@ import emu.skyline.loader.getRomFormat
 import emu.skyline.settings.AppSettings
 import emu.skyline.settings.EmulationSettings
 import emu.skyline.settings.NativeSettings
+import emu.skyline.utils.PerformanceMonitor
 import emu.skyline.utils.ByteBufferSerializable
 import emu.skyline.utils.GpuDriverHelper
 import emu.skyline.utils.serializable
@@ -153,9 +154,39 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
     var fps : Int = 0
     var averageFrametime : Float = 0.0f
     var averageFrametimeDeviation : Float = 0.0f
+    var gameMemoryBytes : Long = 0L
+
+    private val performanceMonitor = PerformanceMonitor()
 
     /**
-     * Writes the current performance statistics into [fps], [averageFrametime] and [averageFrametimeDeviation] fields
+     * Formats a byte count for the performance overlay as MB, or GB with one decimal from 1 GB
+     */
+    private fun formatMemory(bytes : Long?) : String = when {
+        bytes == null -> "N/A"
+        bytes >= 1L shl 30 -> "%.1f GB".format(bytes.toDouble() / (1L shl 30))
+        else -> "${bytes shr 20} MB"
+    }
+
+    /**
+     * Builds the text of the performance overlay, only the entries enabled in the settings are included
+     */
+    private fun buildPerformanceText() : String = buildList {
+        add("$fps FPS")
+        add("${"%.1f".format(averageFrametime)}±${"%.2f".format(averageFrametimeDeviation)}ms")
+        if (emulationSettings.perfStatsAppRam)
+            add("App RAM: ${formatMemory(performanceMonitor.appRamBytes())}")
+        if (emulationSettings.perfStatsGameRam)
+            add("Game RAM: ${formatMemory(gameMemoryBytes.takeIf { it > 0 })}")
+        if (emulationSettings.perfStatsAvailableRam)
+            add("Free RAM: ${formatMemory(performanceMonitor.availableRamBytes())}")
+        if (emulationSettings.perfStatsCpu)
+            add("CPU: ${performanceMonitor.cpuPercent()?.let { "${it.toInt()}%" } ?: "N/A"}")
+        if (emulationSettings.perfStatsGpu)
+            add("GPU: ${performanceMonitor.gpuPercent()?.let { "${it.toInt()}%" } ?: "N/A"}")
+    }.joinToString("\n")
+
+    /**
+     * Writes the current performance statistics into [fps], [averageFrametime], [averageFrametimeDeviation] and [gameMemoryBytes] fields
      */
     private external fun updatePerformanceStatistics()
 
@@ -313,7 +344,7 @@ class EmulationActivity : AppCompatActivity(), SurfaceHolder.Callback, View.OnTo
                 postDelayed(object : Runnable {
                     override fun run() {
                         updatePerformanceStatistics()
-                        text = "$fps FPS\n${"%.1f".format(averageFrametime)}±${"%.2f".format(averageFrametimeDeviation)}ms"
+                        text = buildPerformanceText()
                         postDelayed(this, 250)
                     }
                 }, 250)

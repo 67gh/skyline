@@ -75,6 +75,11 @@
     <string name="perf_stats">Afficher les statistiques de performance</string>
     <string name="perf_stats_desc_off">Les statistiques de performance ne seront pas affichées</string>
     <string name="perf_stats_desc_on">Les statistiques de performance seront affichées dans le coin supérieur gauche</string>
+    <string name="perf_stats_app_ram">Afficher la RAM utilisée par l\'application</string>
+    <string name="perf_stats_game_ram">Afficher la RAM utilisée par le jeu</string>
+    <string name="perf_stats_available_ram">Afficher la RAM disponible</string>
+    <string name="perf_stats_cpu">Afficher l\'utilisation du processeur</string>
+    <string name="perf_stats_gpu">Afficher l\'utilisation du GPU (si l\'appareil le permet)</string>
     <string name="max_refresh_rate">Utilise le taux de rafraîchissement maximal de l\'écran</string>
     <string name="max_refresh_rate_enabled">Règle le taux de rafraîchissement aussi haut que possible (la plupart des jeux ne fonctionneront pas)</string>
     <string name="max_refresh_rate_disabled">Règle le taux de rafraîchissement de l\'écran à 60Hz</string>

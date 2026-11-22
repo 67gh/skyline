@@ -7,6 +7,7 @@
 #include "results.h"
 #include "IStorage.h"
 #include "IMultiCommitManager.h"
+#include "ISaveDataInfoReader.h"
 #include "IFileSystemProxy.h"
 
 namespace skyline::service::fssrv {
@@ -104,6 +105,21 @@ namespace skyline::service::fssrv {
 
     Result IFileSystemProxy::OpenMultiCommitManager(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
         manager.RegisterService(SRVREG(IMultiCommitManager), session, response);
+        return {};
+    }
+
+    Result IFileSystemProxy::OpenSaveDataInfoReader(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
+        return {};
+    }
+
+    Result IFileSystemProxy::OpenSaveDataInfoReaderBySaveDataSpaceId(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
+        return {};
+    }
+
+    Result IFileSystemProxy::OpenSaveDataInfoReaderOnlyCacheStorage(type::KSession &session, ipc::IpcRequest &request, ipc::IpcResponse &response) {
+        manager.RegisterService(SRVREG(ISaveDataInfoReader), session, response);
         return {};
     }
 }
