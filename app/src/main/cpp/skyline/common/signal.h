@@ -75,6 +75,12 @@ namespace skyline::signal {
      */
     void SetTlsRestorer(void *(*function)());
 
+    /**
+     * @brief Opens the file where crashes of threads that aren't running guest code (e.g. in the GPU driver) are reported with their fault address and call stack
+     * @note This must be called before the crash can happen as no file can be opened from inside a signal handler
+     */
+    void InitialiseCrashReport(const std::string &path);
+
     using SignalHandler = void (*)(int, struct siginfo *, ucontext *, void **);
 
     /**

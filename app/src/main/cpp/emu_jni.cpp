@@ -92,6 +92,7 @@ extern "C" JNIEXPORT void Java_emu_skyline_EmulationActivity_executeApplication(
 
     skyline::JniString publicAppFilesPath(env, publicAppFilesPathJstring);
     skyline::Logger::EmulationContext.Initialize(publicAppFilesPath + "logs/emulation.sklog");
+    skyline::signal::InitialiseCrashReport(publicAppFilesPath + "native_crash.log");
 
     auto start{std::chrono::steady_clock::now()};
 

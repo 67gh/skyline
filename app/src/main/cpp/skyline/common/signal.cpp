@@ -5,6 +5,8 @@
 #include <dlfcn.h>
 #include <unwind.h>
 #include <fcntl.h>
+#include <cstdio>
+#include <sys/prctl.h>
 #include "signal.h"
 
 namespace skyline::signal {
@@ -154,6 +156,68 @@ namespace skyline::signal {
 
     thread_local std::array<SignalHandler, NSIG> ThreadSignalHandlers{};
 
+    static int CrashReportFd{-1}; //!< Descriptor of native_crash.log, opened in advance as nothing can be allocated or opened while handling a crash
+
+    void InitialiseCrashReport(const std::string &path) {
+        CrashReportFd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0644);
+    }
+
+    struct CrashBacktrace {
+        std::array<uintptr_t, 24> frames;
+        size_t count;
+    };
+
+    static _Unwind_Reason_Code CrashBacktraceCallback(struct _Unwind_Context *context, void *argument) {
+        auto &backtrace{*static_cast<CrashBacktrace *>(argument)};
+        if (backtrace.count == backtrace.frames.size())
+            return _URC_END_OF_STACK;
+        auto pc{_Unwind_GetIP(context)};
+        if (!pc)
+            return _URC_END_OF_STACK;
+        backtrace.frames[backtrace.count++] = pc;
+        return _URC_NO_REASON;
+    }
+
+    /**
+     * @brief Writes where a crash happened on a thread that isn't running guest code (driver/worker threads) into native_crash.log
+     * @note This only runs right before the default (system) crash handler, which kills the process anyway, so it favours being informative over being strictly async-signal-safe
+     */
+    __attribute__((no_stack_protector))
+    static void WriteCrashReport(int signal, siginfo *info, ucontext *context) {
+        if (CrashReportFd < 0 || (signal != SIGSEGV && signal != SIGBUS && signal != SIGILL && signal != SIGFPE && signal != SIGABRT))
+            return;
+
+        char name[17]{};
+        prctl(PR_GET_NAME, name);
+
+        auto &machineContext{context->uc_mcontext};
+        auto describe{[](uint64_t address, char *out, size_t size) {
+            Dl_info symbol{};
+            if (dladdr(reinterpret_cast<void *>(address), &symbol) && symbol.dli_fname)
+                snprintf(out, size, "%s+0x%llx", symbol.dli_fname, static_cast<unsigned long long>(address - reinterpret_cast<uint64_t>(symbol.dli_fbase)));
+            else
+                snprintf(out, size, "unknown");
+        }};
+
+        char pcModule[256], lrModule[256], line[768];
+        describe(machineContext.pc, pcModule, sizeof(pcModule));
+        describe(machineContext.regs[30], lrModule, sizeof(lrModule));
+        int length{snprintf(line, sizeof(line), "NATIVE CRASH signal %d code %d fault 0x%llx thread '%s' tid %d\n  pc 0x%llx %s\n  lr 0x%llx %s\n  sp 0x%llx\n", signal, info->si_code, static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(info->si_addr)), name, gettid(), static_cast<unsigned long long>(machineContext.pc), pcModule, static_cast<unsigned long long>(machineContext.regs[30]), lrModule, static_cast<unsigned long long>(machineContext.sp))};
+        if (length > 0)
+            write(CrashReportFd, line, std::min(static_cast<size_t>(length), sizeof(line) - 1));
+
+        CrashBacktrace backtrace{};
+        _Unwind_Backtrace(CrashBacktraceCallback, &backtrace);
+        for (size_t i{}; i < backtrace.count; i++) {
+            char frameModule[256];
+            describe(backtrace.frames[i], frameModule, sizeof(frameModule));
+            length = snprintf(line, sizeof(line), "  #%02zu 0x%llx %s\n", i, static_cast<unsigned long long>(backtrace.frames[i]), frameModule);
+            if (length > 0)
+                write(CrashReportFd, line, std::min(static_cast<size_t>(length), sizeof(line) - 1));
+        }
+        fsync(CrashReportFd);
+    }
+
     __attribute__((no_stack_protector)) // Stack protector stores data in TLS at the function epilogue and verifies it at the prolog, we cannot allow writes to guest TLS and may switch to an alternative TLS during the signal handler and have disabled the stack protector as a result
     void ThreadSignalHandler(int signal, siginfo *info, ucontext *context) {
         void *tls{}; // The TLS value prior to being restored if it is
@@ -164,6 +228,8 @@ namespace skyline::signal {
         if (handler) {
             handler(signal, info, context, &tls);
         } else {
+            WriteCrashReport(signal, info, context);
+
             auto defaultHandler{DefaultSignalHandlers.at(static_cast<size_t>(signal)).function};
             if (defaultHandler)
                 defaultHandler(signal, info, context);

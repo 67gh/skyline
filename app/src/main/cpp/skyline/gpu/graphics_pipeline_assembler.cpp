@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright © 2022 Skyline Team and Contributors (https://github.com/skyline-emu/)
 
+#include <unistd.h>
+#include <fcntl.h>
+#include <cerrno>
+#include <cstdio>
+#include <limits>
+#include <memory>
 #include <boost/functional/hash.hpp>
 #include <filesystem>
 #include <gpu.h>
@@ -38,54 +44,87 @@ namespace skyline::gpu {
     };
     static_assert(sizeof(PipelineCacheFileDataHeader) == 0x10);
 
+    // Disk caches are optional. Never allocate an unbounded size from a file header.
+    static constexpr u64 MaxPipelineCacheBytes{128ULL * 1024 * 1024};
+
     static vk::raii::PipelineCache DeserialisePipelineCache(GPU &gpu, std::string_view pipelineCacheDir) {
-        std::filesystem::create_directories(pipelineCacheDir);
-        PipelineCacheFileNameHeader expectedFilenameHeader{gpu.traits};
-        std::filesystem::path path{std::filesystem::path{pipelineCacheDir} / expectedFilenameHeader.HexDump()};
+        try {
+            std::filesystem::create_directories(pipelineCacheDir);
+            PipelineCacheFileNameHeader expectedFilenameHeader{gpu.traits};
+            auto path{std::filesystem::path{pipelineCacheDir} / expectedFilenameHeader.HexDump()};
+            if (!std::filesystem::exists(path))
+                return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
 
-        if (!std::filesystem::exists(path))
-            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
+            std::ifstream stream{path, std::ios::binary | std::ios::ate};
+            const auto length{stream.tellg()};
+            if (!stream || length < static_cast<std::streamoff>(sizeof(PipelineCacheFileDataHeader)))
+                throw exception("Truncated Vulkan pipeline cache header");
+            stream.seekg(0);
+            PipelineCacheFileDataHeader header{};
+            if (!stream.read(reinterpret_cast<char *>(&header), sizeof(header)))
+                throw exception("Failed to read Vulkan pipeline cache header");
+            const auto payloadSize{static_cast<u64>(length) - sizeof(header)};
+            if (header.size != payloadSize || header.size > MaxPipelineCacheBytes ||
+                header.size > static_cast<u64>(std::numeric_limits<std::streamsize>::max()))
+                throw exception("Invalid Vulkan pipeline cache size");
 
-        std::ifstream stream{path, std::ios::binary};
-        if (stream.fail()) {
-            Logger::Warn("Failed to open Vulkan pipeline cache!");
-            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
+            std::vector<u8> readData(static_cast<size_t>(header.size));
+            if (header.size && !stream.read(reinterpret_cast<char *>(readData.data()), static_cast<std::streamsize>(header.size)))
+                throw exception("Truncated Vulkan pipeline cache payload");
+            if (header.hash != XXH64(readData.data(), readData.size(), 0))
+                throw exception("Invalid Vulkan pipeline cache hash");
+            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{
+                .initialDataSize = readData.size(),
+                .pInitialData = readData.data(),
+            }};
+        } catch (const std::exception &error) {
+            Logger::Warn("Ignoring unusable Vulkan pipeline cache: {}", error.what());
         }
-
-        PipelineCacheFileDataHeader header{};
-        stream.read(reinterpret_cast<char *>(&header), sizeof(PipelineCacheFileDataHeader));
-
-        std::vector<u8> readData(header.size);
-        stream.read(reinterpret_cast<char *>(readData.data()), static_cast<std::streamsize>(header.size));
-
-        if (header.hash != XXH64(readData.data(), readData.size(), 0)) {
-            Logger::Warn("Ignoring invalid pipeline cache file!");
-            return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
-        }
-
-        return {gpu.vkDevice, vk::PipelineCacheCreateInfo{
-            .initialDataSize = readData.size(),
-            .pInitialData = readData.data(),
-        }};
+        // An error creating the empty cache must still propagate.
+        return {gpu.vkDevice, vk::PipelineCacheCreateInfo{}};
     }
 
     static void SerialisePipelineCache(GPU &gpu, std::string_view pipelineCacheDir, span<u8> data) {
-        PipelineCacheFileNameHeader expectedFilenameHeader{gpu.traits};
-        std::filesystem::path path{std::filesystem::path{pipelineCacheDir} / expectedFilenameHeader.HexDump()};
-
-        PipelineCacheFileDataHeader header{
-            .size = data.size(),
-            .hash = XXH64(data.data(), data.size(), 0)
-        };
-        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
-        if (stream.fail()) {
-            Logger::Warn("Failed to write Vulkan pipeline cache!");
+        if (data.size() > MaxPipelineCacheBytes) {
+            Logger::Warn("Skipping oversized Vulkan pipeline cache: {} bytes", data.size());
             return;
         }
-
-        stream.write(reinterpret_cast<char *>(&header), sizeof(PipelineCacheFileDataHeader));
-        stream.write(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
-
+        std::filesystem::create_directories(pipelineCacheDir);
+        PipelineCacheFileNameHeader expectedFilenameHeader{gpu.traits};
+        auto path{std::filesystem::path{pipelineCacheDir} / expectedFilenameHeader.HexDump()};
+        std::string temporary{path.string() + ".tmp.XXXXXX"};
+        int fd{mkstemp(temporary.data())};
+        if (fd < 0) {
+            Logger::Warn("Cannot create Vulkan cache temporary file (errno={})", errno);
+            return;
+        }
+        auto cleanup{[&](int *) noexcept {
+            if (fd >= 0) close(fd);
+            unlink(temporary.c_str());
+        }};
+        std::unique_ptr<int, decltype(cleanup)> guard{&fd, cleanup};
+        auto writeAll{[&](const void *data, size_t size) {
+            auto bytes{static_cast<const u8 *>(data)};
+            while (size) {
+                auto written{write(fd, bytes, size)};
+                if (written < 0 && errno == EINTR) continue;
+                if (written <= 0) return false;
+                bytes += written;
+                size -= static_cast<size_t>(written);
+            }
+            return true;
+        }};
+        PipelineCacheFileDataHeader header{.size = data.size(), .hash = XXH64(data.data(), data.size(), 0)};
+        if (!writeAll(&header, sizeof(header)) || !writeAll(data.data(), data.size()) || fsync(fd) != 0) {
+            Logger::Warn("Vulkan pipeline cache write failed (errno={})", errno);
+            return;
+        }
+        const int closeResult{close(fd)};
+        fd = -1; // Never retry close: the descriptor may have been reused.
+        if (closeResult != 0 || std::rename(temporary.c_str(), path.c_str()) != 0) {
+            Logger::Warn("Vulkan pipeline cache replacement failed (errno={})", errno);
+            return;
+        }
         Logger::Info("Wrote Vulkan pipeline cache to {} (size: 0x{:X} bytes)", path.string(), data.size());
     }
 
