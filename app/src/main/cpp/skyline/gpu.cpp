@@ -413,6 +413,7 @@ namespace skyline::gpu {
         if (*state.settings->useDirectMemoryImport) {
             bool importWorks{};
             if (traits.supportsAdrenoDirectMemoryImport) {
+                Logger::Info("Testing direct memory import support");
                 constexpr size_t ProbeSize{0x10000};
                 void *probe{mmap(nullptr, ProbeSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)};
                 if (probe != MAP_FAILED) {

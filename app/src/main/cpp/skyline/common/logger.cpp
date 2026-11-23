@@ -62,6 +62,10 @@ namespace skyline {
         if (context)
             // We use RS (\036) and GS (\035) as our delimiters
             context->Write(fmt::format("\036{}\035{}\035{}\035{}\n", levelCharacter[static_cast<u8>(level)], (util::GetTimeNs() / constant::NsInMillisecond) - context->start, threadName, str));
+
+        // Error/Warn/Info lines are rare, flushing them straight away means the log still shows what happened right before the app is killed or crashes (otherwise up to 4 KB of the end is lost)
+        if (context && level != LogLevel::Debug && level != LogLevel::Verbose)
+            context->Flush();
     }
 
     void Logger::LoggerContext::Write(const std::string &str) {
