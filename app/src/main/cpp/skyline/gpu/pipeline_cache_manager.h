@@ -37,6 +37,17 @@ namespace skyline::gpu {
         std::ifstream OpenReadStream();
 
         /**
+         * @brief Marks that the cached pipelines are about to be replayed (compiled) by the driver
+         * @return false if the previous launch died while doing so (eg. a driver crash compiling one of the cached pipelines), in which case the whole cache has been discarded so the crash can't repeat on every launch
+         */
+        bool BeginLoad();
+
+        /**
+         * @brief Clears the marker set by BeginLoad(), must be called once every cached pipeline has been loaded
+         */
+        void EndLoad();
+
+        /**
          * @brief Shrinks the pipeline cache file to `offset` bytes, removing any (potentially invalid) data after that point
          */
         void InvalidateAllAfter(u64 offset);

@@ -950,6 +950,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
         if (!gpu.graphicsPipelineCacheManager)
             return;
 
+        gpu.graphicsPipelineCacheManager->BeginLoad();
         std::ifstream stream{gpu.graphicsPipelineCacheManager->OpenReadStream()};
         i64 lastKnownGoodOffset{stream.tellg()};
         try {
@@ -973,6 +974,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
 
             gpu.graphicsPipelineAssembler->WaitIdle();
             Logger::Info("Loaded {} graphics pipelines in {}ms", map.size(), (util::GetTimeNs() - startTime) / constant::NsInMillisecond);
+            gpu.graphicsPipelineCacheManager->EndLoad();
 
             gpu.graphicsPipelineAssembler->SavePipelineCache();
 
@@ -990,6 +992,7 @@ namespace skyline::gpu::interconnect::maxwell3d {
         } catch (const exception &e) {
             Logger::Warn("Pipeline cache corrupted at: 0x{:X}, error: {}", lastKnownGoodOffset, e.what());
             gpu.graphicsPipelineCacheManager->InvalidateAllAfter(static_cast<u64>(lastKnownGoodOffset));
+            gpu.graphicsPipelineCacheManager->EndLoad();
             return;
         }
     }

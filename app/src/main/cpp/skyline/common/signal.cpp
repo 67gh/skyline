@@ -6,6 +6,7 @@
 #include <unwind.h>
 #include <fcntl.h>
 #include <cstdio>
+#include <cstring>
 #include <sys/prctl.h>
 #include "signal.h"
 
@@ -202,6 +203,10 @@ namespace skyline::signal {
         char pcModule[256], lrModule[256], line[768];
         describe(machineContext.pc, pcModule, sizeof(pcModule));
         describe(machineContext.regs[30], lrModule, sizeof(lrModule));
+
+        // Faults in code that isn't part of any library are the Android runtime's own (implicit null checks in compiled Java code) which it handles itself, not crashes
+        if (strcmp(pcModule, "unknown") == 0)
+            return;
         int length{snprintf(line, sizeof(line), "NATIVE CRASH signal %d code %d fault 0x%llx thread '%s' tid %d\n  pc 0x%llx %s\n  lr 0x%llx %s\n  sp 0x%llx\n", signal, info->si_code, static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(info->si_addr)), name, gettid(), static_cast<unsigned long long>(machineContext.pc), pcModule, static_cast<unsigned long long>(machineContext.regs[30]), lrModule, static_cast<unsigned long long>(machineContext.sp))};
         if (length > 0)
             write(CrashReportFd, line, std::min(static_cast<size_t>(length), sizeof(line) - 1));

@@ -95,6 +95,27 @@ namespace skyline::gpu {
         return mainStream;
     }
 
+    bool PipelineCacheManager::BeginLoad() {
+        std::string markerPath{mainPath + ".loading"};
+        std::error_code error;
+        bool previousLoadFinished{!std::filesystem::exists(markerPath, error)};
+        if (!previousLoadFinished) {
+            Logger::Warn("The previous launch died while loading the pipeline cache (probably a driver crash while compiling one of the cached pipelines), discarding the cache");
+            std::filesystem::remove(mainPath, error);
+            std::ofstream mainStream{mainPath, std::ios::binary | std::ios::trunc};
+            mainStream.write(reinterpret_cast<const char *>(&ValidPipelineCacheFileHeader), sizeof(PipelineCacheFileHeader));
+        }
+
+        std::ofstream marker{markerPath, std::ios::binary | std::ios::trunc};
+        marker << 'L'; // The marker only needs to exist, it is written (and closed) now so it is on disk before the driver can crash
+        return previousLoadFinished;
+    }
+
+    void PipelineCacheManager::EndLoad() {
+        std::error_code error;
+        std::filesystem::remove(mainPath + ".loading", error);
+    }
+
     void PipelineCacheManager::InvalidateAllAfter(u64 offset) {
         std::filesystem::resize_file(mainPath, offset);
     }
