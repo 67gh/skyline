@@ -32,6 +32,7 @@ namespace skyline::kernel {
           serviceManager(state) {}
 
     void OS::Execute(int romFd, loader::RomFormat romType) {
+        Logger::Info("Boot: Execute() entered (RomFormat {})", static_cast<int>(romType)); // Boot breadcrumbs are Info on purpose: Info lines are flushed immediately so the last one survives a native crash
         auto romFile{std::make_shared<vfs::OsBacking>(romFd)};
         auto keyStore{std::make_shared<crypto::KeyStore>(privateAppFilesPath + "keys/")};
 
@@ -52,12 +53,19 @@ namespace skyline::kernel {
             }
         }();
 
+        Logger::Info("Boot: Loader constructed");
+
+        Logger::Info("Boot: GPU::Initialise begin");
         state.gpu->Initialise();
+        Logger::Info("Boot: GPU::Initialise end");
 
         auto &process{state.process};
         process = std::make_shared<kernel::type::KProcess>(state);
+        Logger::Info("Boot: KProcess created");
 
+        Logger::Info("Boot: LoadProcessData begin");
         auto entry{state.loader->LoadProcessData(process, state)};
+        Logger::Info("Boot: LoadProcessData end");
         auto &nacp{state.loader->nacp};
         if (nacp) {
             std::string name{nacp->GetApplicationName(language::ApplicationLanguage::AmericanEnglish)}, publisher{nacp->GetApplicationPublisher(language::ApplicationLanguage::AmericanEnglish)};
@@ -70,7 +78,9 @@ namespace skyline::kernel {
 
         StallWatchdog stallWatchdog{state}; // Reports a frozen game (no frame presented), it is joined when this function returns
 
+        Logger::Info("Boot: InitializeHeapTls begin");
         process->InitializeHeapTls();
+        Logger::Info("Boot: InitializeHeapTls end, creating main thread");
         auto thread{process->CreateThread(entry)};
         if (thread) {
             Logger::Info("Starting main HOS thread");
