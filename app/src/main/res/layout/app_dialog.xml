@@ -84,16 +84,15 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <com.google.android.flexbox.FlexboxLayout
+            android:id="@+id/game_primary_actions"
             style="@style/ThemeOverlay.Material3.Button.IconButton.Filled.Tonal"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             app:flexWrap="nowrap"
-            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/game_icon"
-            app:layout_constraintVertical_bias="1">
+            app:layout_constraintTop_toBottomOf="@id/game_icon">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/game_play"
@@ -127,6 +126,68 @@
                 android:contentDescription="@string/pin"
                 app:icon="@drawable/ic_add_home"
                 app:iconGravity="textStart" />
+
+        </com.google.android.flexbox.FlexboxLayout>
+
+        <com.google.android.flexbox.FlexboxLayout
+            android:id="@+id/game_data_actions"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            app:flexWrap="wrap"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/game_primary_actions"
+            app:layout_constraintVertical_bias="1">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/game_delete_shader_cache"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="@string/game_delete_shader_cache"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_clear"
+                app:iconSize="18dp"
+                app:layout_flexGrow="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/game_export_saves"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="@string/game_export_saves"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_file_download"
+                app:iconSize="18dp"
+                app:layout_flexGrow="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/game_import_saves"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="@string/game_import_saves"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_file_upload"
+                app:iconSize="18dp"
+                app:layout_flexGrow="1" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/game_delete_saves"
+                style="@style/Widget.Material3.Button.TonalButton.Icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="@string/game_delete_saves"
+                android:textSize="12sp"
+                app:icon="@drawable/ic_delete"
+                app:iconSize="18dp"
+                app:layout_flexGrow="1" />
 
         </com.google.android.flexbox.FlexboxLayout>
     </androidx.constraintlayout.widget.ConstraintLayout>

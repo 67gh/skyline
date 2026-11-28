@@ -268,4 +268,24 @@
     <string name="expand_button_title" tools:override="true">Expand</string>
     <string name="undo">Undo</string>
     <string name="per_game_settings_active_message">Per-game settings are active</string>
+    <!-- Game data (long-press dialog) -->
+    <string name="game_delete_shader_cache">Delete shader cache</string>
+    <string name="game_export_saves">Export saves</string>
+    <string name="game_import_saves">Import saves</string>
+    <string name="game_delete_saves">Delete saves</string>
+    <string name="game_shader_cache_deleted">Shader cache deleted (%1$s freed)</string>
+    <string name="game_shader_cache_empty">This game has no shader cache</string>
+    <string name="game_saves_exported">Saves exported</string>
+    <string name="game_saves_imported">Saves imported</string>
+    <string name="game_saves_deleted">Saves deleted</string>
+    <string name="game_saves_none">This game has no saves</string>
+    <string name="game_saves_wrong_game">This file does not contain saves for this game</string>
+    <string name="game_saves_import_confirm_title">Replace saves?</string>
+    <string name="game_saves_import_confirm_message">The current saves of this game will be replaced by the content of the file. This cannot be undone.</string>
+    <string name="game_saves_delete_confirm_title">Delete saves?</string>
+    <string name="game_saves_delete_confirm_message">All saves of this game will be permanently deleted. Export them first if you want to keep a copy.</string>
+    <string name="game_replace">Replace</string>
+    <string name="game_delete">Delete</string>
+    <string name="game_data_close_game">Close the running game first</string>
+    <string name="game_data_operation_failed">Operation failed: %1$s</string>
 </resources>

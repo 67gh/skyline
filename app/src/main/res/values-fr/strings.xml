@@ -253,4 +253,24 @@
     <!--suppress AndroidLintUnusedResources -->
     <string name="expand_button_title" tools:override="true">Développer</string>
     <string name="undo">Annuler</string>
+    <!-- Game data (long-press dialog) -->
+    <string name="game_delete_shader_cache">Supprimer le cache shaders</string>
+    <string name="game_export_saves">Exporter les sauvegardes</string>
+    <string name="game_import_saves">Importer des sauvegardes</string>
+    <string name="game_delete_saves">Supprimer les sauvegardes</string>
+    <string name="game_shader_cache_deleted">Cache shaders supprimé (%1$s libérés)</string>
+    <string name="game_shader_cache_empty">Ce jeu n\'a pas de cache shaders</string>
+    <string name="game_saves_exported">Sauvegardes exportées</string>
+    <string name="game_saves_imported">Sauvegardes importées</string>
+    <string name="game_saves_deleted">Sauvegardes supprimées</string>
+    <string name="game_saves_none">Ce jeu n\'a pas de sauvegardes</string>
+    <string name="game_saves_wrong_game">Ce fichier ne contient pas de sauvegardes pour ce jeu</string>
+    <string name="game_saves_import_confirm_title">Remplacer les sauvegardes ?</string>
+    <string name="game_saves_import_confirm_message">Les sauvegardes actuelles de ce jeu seront remplacées par le contenu du fichier. Cette action est irréversible.</string>
+    <string name="game_saves_delete_confirm_title">Supprimer les sauvegardes ?</string>
+    <string name="game_saves_delete_confirm_message">Toutes les sauvegardes de ce jeu seront supprimées définitivement. Exportez-les d\'abord si vous voulez en garder une copie.</string>
+    <string name="game_replace">Remplacer</string>
+    <string name="game_delete">Supprimer</string>
+    <string name="game_data_close_game">Fermez d\'abord le jeu en cours</string>
+    <string name="game_data_operation_failed">Échec de l\'opération : %1$s</string>
 </resources>
